@@ -20,9 +20,6 @@ their shared conformance corpus, and each result matches the reference one byte 
 </dependency>
 ```
 
-This artifact is not on Maven Central yet. Until it is published, build it and install it
-into your local repository with `mvn install`.
-
 ## Quick start
 
 ```java

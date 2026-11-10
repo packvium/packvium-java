@@ -3,13 +3,13 @@ name: release
 # Publishing is driven by a tag, and only by a tag. There is no manual upload step.
 #
 # Maven Central has no OIDC Trusted Publishing, so this workflow needs two credentials. They
-# live only in the `maven-central` GitHub environment, never in the repository. Before the
+# live only in the `Maven` GitHub environment, never in the repository. Before the
 # first run:
 #   1. Verify the `com.packvium` namespace at https://central.sonatype.com (Namespaces).
 #   2. Generate a user token there (Account -> Generate User Token).
 #   3. Create a signing key (`gpg --full-generate-key`, RSA 4096) and publish its public half
 #      to keys.openpgp.org; Central rejects a signature whose key it cannot find.
-#   4. Create a GitHub environment named `maven-central` with the reviewers the project
+#   4. Create a GitHub environment named `Maven` with the reviewers the project
 #      wants, holding the secrets CENTRAL_USERNAME, CENTRAL_PASSWORD (the token's two halves),
 #      GPG_PRIVATE_KEY (`gpg --armor --export-secret-keys <id>`) and GPG_PASSPHRASE.
 # The environment is what turns "anyone who can push a tag" into "a release a named person
@@ -81,7 +81,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    environment: maven-central
+    environment: Maven
     permissions:
       contents: read
       id-token: write      # OIDC, for the attestation
