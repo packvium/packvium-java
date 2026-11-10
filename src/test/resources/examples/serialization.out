@@ -1,0 +1,37 @@
+status      feasible
+score       [0,1337,1,743600,560000]  <- lexicographic, exact integers, cheapest first
+solver      extreme_points:seeded_2
+containers  ["box-m"]
+placed      8
+unplaced    []
+
+one placement, in full:
+{
+    "item_id": "mug#2",
+    "item_type": "mug",
+    "position": {
+        "x": {
+            "ticks": 0,
+            "value": "0",
+            "unit": "mm"
+        },
+        "y": {
+            "ticks": 0,
+            "value": "0",
+            "unit": "mm"
+        },
+        "z": {
+            "ticks": 0,
+            ...
+
+alternatives: 2
+   score [0,1337,1,743600,560000]  first placement mug#2 at x=0
+   score [0,1337,1,743600,560000]  first placement book#1 at x=0
+
+misspelled field: feasible -- accepted; the misspelling is invisible to the parser,
+                  so `keep_upright` was never applied to the mug
+unknown objective: unknown objective cheapest; expected one of default, lowest_cost, shipping_cost, lowest_landed_cost,
+fields this engine refuses by name: none
+  what one looks like, from an engine that is not: unsupported_feature: the Java engine does not yet implement item.shape_type=convex_hull; the request was rejec
+
+the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.0.0.jar

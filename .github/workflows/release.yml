@@ -1,0 +1,143 @@
+name: release
+
+# Publishing is driven by a tag, and only by a tag. There is no manual upload step.
+#
+# Maven Central has no OIDC Trusted Publishing, so this workflow needs two credentials. They
+# live only in the `maven-central` GitHub environment, never in the repository. Before the
+# first run:
+#   1. Verify the `com.packvium` namespace at https://central.sonatype.com (Namespaces).
+#   2. Generate a user token there (Account -> Generate User Token).
+#   3. Create a signing key (`gpg --full-generate-key`, RSA 4096) and publish its public half
+#      to keys.openpgp.org; Central rejects a signature whose key it cannot find.
+#   4. Create a GitHub environment named `maven-central` with the reviewers the project
+#      wants, holding the secrets CENTRAL_USERNAME, CENTRAL_PASSWORD (the token's two halves),
+#      GPG_PRIVATE_KEY (`gpg --armor --export-secret-keys <id>`) and GPG_PASSPHRASE.
+# The environment is what turns "anyone who can push a tag" into "a release a named person
+# approved".
+#
+# A pre-release tag (`v1.0.0-rc.1`) never publishes: Central versions are immutable, and
+# the negated pattern must follow the positive one.
+on:
+  push:
+    tags: ["v*", "!v*-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # Without this, `git tag v1.1.0` on a tree that still says 1.0.0 publishes 1.0.0 under a
+      # name that claims otherwise, and the mistake is only visible once it is immutable.
+      - name: The tag must match the version in the pom
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          built=$(mvn -B -q -ntp help:evaluate -Dexpression=project.version -DforceStdout)
+          if [ "$tagged" != "$built" ]; then
+            echo "tag $GITHUB_REF_NAME does not match pom version $built" >&2
+            exit 1
+          fi
+
+      - run: mvn -B -ntp -P release -Dgpg.skip package
+
+      - name: Run the built jar from a clean consumer project
+        run: |
+          mkdir -p /tmp/consumer
+          cat > /tmp/consumer/Consumer.java <<'JAVA'
+          import com.packvium.Packer;
+          import com.packvium.config.PackingConfig;
+          import com.packvium.domain.Container;
+          import com.packvium.domain.Dimensions;
+          import com.packvium.domain.Item;
+          import java.util.List;
+
+          public final class Consumer {
+              public static void main(String[] arguments) {
+                  boolean complete = new Packer(PackingConfig.balanced()).pack(
+                          List.of(Item.builder("box", Dimensions.mm("50", "50", "50")).quantity(8).build()),
+                          List.of(Container.builder("carton", Dimensions.mm("100", "100", "100")).build()))
+                          .complete();
+                  if (!complete) {
+                      throw new AssertionError("eight cubes did not fill the carton");
+                  }
+              }
+          }
+          JAVA
+          java -cp "target/packvium-${GITHUB_REF_NAME#v}.jar" /tmp/consumer/Consumer.java
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: artifacts
+          path: target/packvium-*.jar
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: maven-central
+    permissions:
+      contents: read
+      id-token: write      # OIDC, for the attestation
+      attestations: write  # build provenance, so a consumer can verify where a file came from
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+      - name: Build, sign and publish to Maven Central
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -ntp -P release deploy
+      - uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: target/packvium-*.jar
+
+  # Every tag gets a GitHub Release: a tag is a git object, a Release is what a human and a
+  # maintenance scorer can read.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the Release is the only thing this workflow writes to the repository
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Create the GitHub Release from the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; nothing to do."
+            exit 0
+          fi
+          # This version's entry, from its heading to the next one. A tag whose version has
+          # no entry would publish a Release nobody can read, so that fails the job.
+          awk -v want="## [$version]" '
+            index($0, want) == 1 { inside = 1; next }
+            inside && /^## \[/   { exit }
+            inside               { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "CHANGELOG.md carries no entry for $version" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Packvium for Java $version" \
+            --notes-file release-notes.md \
+            --verify-tag

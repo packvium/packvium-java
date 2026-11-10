@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege by default; jobs that need more request it explicitly.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+        # 17 is the declared minimum (`maven.compiler.release`); 21 and 25 are the LTS
+        # releases consumers are most likely to run it on.
+        java: ["17", "21", "25"]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      # `package` runs every test, the examples included, before it builds the jar.
+      - run: mvn -B -ntp package
+      - name: CLI smoke test
+        shell: bash
+        run: |
+          echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
+                 "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
+            | java -jar target/packvium-*.jar > result.json
+          grep -q '"complete":true' result.json
+
+  # The release profile adds sources, javadoc and signing. Building it here, unsigned, keeps a
+  # javadoc error from being discovered for the first time by the tag that tries to publish.
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - run: mvn -B -ntp -P release -Dgpg.skip package
+
+  # Fails a pull request that introduces a dependency with a known vulnerability or a
+  # licence the project has not accepted. With no runtime dependencies its usual answer is
+  # "nothing changed", which is the answer we want to keep true rather than assume.
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          comment-summary-in-pr: on-failure
