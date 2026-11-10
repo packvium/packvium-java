@@ -28,14 +28,14 @@
     </developers>
 
     <scm>
-        <url>https://github.com/toxakara/packvium-java</url>
-        <connection>scm:git:https://github.com/toxakara/packvium-java.git</connection>
-        <developerConnection>scm:git:git@github.com:toxakara/packvium-java.git</developerConnection>
+        <url>https://github.com/packvium/packvium-java</url>
+        <connection>scm:git:https://github.com/packvium/packvium-java.git</connection>
+        <developerConnection>scm:git:git@github.com:packvium/packvium-java.git</developerConnection>
     </scm>
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/toxakara/packvium-java/issues</url>
+        <url>https://github.com/packvium/packvium-java/issues</url>
     </issueManagement>
 
     <properties>
