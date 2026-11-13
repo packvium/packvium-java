@@ -4,6 +4,25 @@ What changed in `com.packvium:packvium` on Maven Central, release by release. Th
 follows [Keep a Changelog](https://keepachangelog.com/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0]
+
+Answers every request the way Packvium 1.1.0 does in the other languages, checked byte for
+byte against the 1.1.0 conformance corpus.
+
+### Added
+
+- Container doors: `container.access_directions` (and `Container.Builder.accessDirections`)
+  names the walls a container is unloaded through, out of `+x -x +y -y +z -z`. With delivery
+  stops, an item due earlier is never walled away from every door by one due later. Without
+  the field nothing changes.
+
+### Changed
+
+- `container.pallet_overhang_limit` is reserved and refused with `unsupported_feature` until
+  an engine implements it.
+- Candidate search skips rules that cannot apply to the item being placed, and the spatial
+  index answers wall and floor projections from its grid. Results are unchanged.
+
 ## [1.0.0]
 
 First release of Packvium for Java. It is a full Java reimplementation that answers every

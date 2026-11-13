@@ -17,9 +17,11 @@ import java.util.Set;
  * necessary and neither implies the other; the post-validator's whole-scene replay remains the
  * sufficient check.
  *
- * <p>Opt-in twice over: inert unless the caller supplies exit directions -- assuming all six
- * walls open would enforce a rule true of no real vehicle -- and inert unless two distinct
- * stops are in play. The blocker set is strictly later stops: the order within a stop is free,
+ * <p>Opt-in twice over: inert unless doors are stated -- assuming all six walls open would
+ * enforce a rule true of no real vehicle -- and inert unless two distinct stops are in play.
+ * The doors come from the container and fall back to the constructor's list: they
+ * have to be per container, since two doors on one trailer and none on another is the case
+ * that makes the rule worth having. The blocker set is strictly later stops: the order within a stop is free,
  * so {@code >=} would refuse two same-stop pallets standing one behind the other.
  *
  * <p>Per placement list the door table is O(n^2 * d); each candidate then costs O(n * d).
@@ -29,9 +31,10 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
     /** An absent stop rides the whole route: never removed, so it blocks every stop. */
     private static final long NO_STOP = Long.MAX_VALUE;
 
-    private final List<String> directions;
+    private final List<String> defaultDirections;
     private List<Placement> placements;
     private Dimensions container;
+    private List<String> directions = List.of();
     private List<List<String>> clear = List.of();
     private long[] stops = new long[0];
 
@@ -50,7 +53,12 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
         }
         // Deduplicated in the canonical order rather than as given: two callers passing the
         // same doors in different orders must search identically.
-        this.directions = SweptRegion.ALL_DIRECTIONS.stream().filter(requested::contains).toList();
+        this.defaultDirections = SweptRegion.ALL_DIRECTIONS.stream().filter(requested::contains).toList();
+    }
+
+    /** The doors a container that states none inherits, in canonical order. */
+    public List<String> defaultDirections() {
+        return defaultDirections;
     }
 
     private static long stopOf(Placement placement) {
@@ -60,10 +68,13 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
     /**
      * Per placed box, the doors still open to it against the already-placed boxes. Keyed on the
      * container too, because a corridor runs to a <em>wall</em>: the same boxes have different
-     * exits in a longer container.
+     * exits in a longer container. And on the doors, since made them a property of the
+     * container: two containers of the same size with different doors have different answers
+     * for the same boxes, and nothing else in the key separates them.
      */
-    private void baseFor(List<Placement> current, Dimensions inner) {
-        if (placements != null && ConstraintContext.samePlacements(placements, current) && inner.equals(container)) {
+    private void baseFor(List<Placement> current, Dimensions inner, List<String> doors) {
+        if (placements != null && ConstraintContext.samePlacements(placements, current) && inner.equals(container)
+                && doors.equals(directions)) {
             return;
         }
         long[] nextStops = new long[current.size()];
@@ -76,11 +87,11 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
         for (int index = 0; index < boxes.size(); index++) {
             if (nextStops[index] == NO_STOP) {
                 // Never unloaded, so it needs no door of its own -- it only ever blocks.
-                nextClear.add(directions);
+                nextClear.add(doors);
                 continue;
             }
             List<String> open = new ArrayList<>();
-            for (String direction : directions) {
+            for (String direction : doors) {
                 long[] sweep = SweptRegion.volume(boxes.get(index), inner, direction);
                 boolean blocked = false;
                 for (int other = 0; other < boxes.size(); other++) {
@@ -98,21 +109,26 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
         }
         placements = current;
         container = inner;
+        directions = doors;
         clear = nextClear;
         stops = nextStops;
     }
 
     @Override
     public ConstraintResult evaluate(ConstraintContext context) {
-        if (directions.isEmpty()) {
+        if (!context.routeSensitive()) {
             return ConstraintResult.allow();
         }
-        if (!context.routeSensitive()) {
+        // The container's own doors win; the configured list is what a container that states
+        // none inherits.
+        List<String> doors = context.container().accessDirections().isEmpty()
+                ? defaultDirections : context.container().accessDirections();
+        if (doors.isEmpty()) {
             return ConstraintResult.allow();
         }
         long candidateStop = context.item().item().stopIndex().orElse(NO_STOP);
         Dimensions inner = context.container().innerDimensions();
-        baseFor(context.placements(), inner);
+        baseFor(context.placements(), inner, doors);
 
         // One distinct stop means nothing can be due before anything else, so no corridor can
         // be blocked by a later item. Checked over the candidate too, or the first placement
@@ -149,7 +165,7 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
         if (candidateStop == NO_STOP) {
             return ConstraintResult.allow();
         }
-        for (String direction : directions) {
+        for (String direction : doors) {
             long[] sweep = SweptRegion.volume(candidate, inner, direction);
             boolean blocked = false;
             for (int other = 0; other < placed.size(); other++) {

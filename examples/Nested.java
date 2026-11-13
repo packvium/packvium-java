@@ -17,7 +17,7 @@ import java.util.Optional;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.0.0.jar examples/Nested.java
+ *     java -cp target/packvium-1.1.0.jar examples/Nested.java
  * </pre>
  *
  * <p>Real fulfilment is rarely one level. Units go into cartons, cartons go onto a pallet, and

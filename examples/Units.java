@@ -15,7 +15,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.0.0.jar examples/Units.java
+ *     java -cp target/packvium-1.1.0.jar examples/Units.java
  * </pre>
  *
  * <p>Packing is arithmetic about physical space, and floating point is the wrong tool for it:

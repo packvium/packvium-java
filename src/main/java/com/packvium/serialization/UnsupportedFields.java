@@ -18,9 +18,13 @@ public record UnsupportedFields(
         List<String> container,
         List<String> shapeTypes) {
 
-    /** What this engine still refuses. */
+    /**
+     * What this engine still refuses. {@code pallet_overhang_limit} was reserved in the schema at
+     * the 1.1.0 contract freeze and is refused until an engine implements it from a request: a
+     * field a caller can set and the solver ignores is worse than a refusal.
+     */
     public static final UnsupportedFields CURRENT = new UnsupportedFields(
-            List.of(), List.of(), List.of(), List.of(), List.of());
+            List.of(), List.of(), List.of(), List.of("pallet_overhang_limit"), List.of());
 
     public UnsupportedFields {
         request = List.copyOf(request);

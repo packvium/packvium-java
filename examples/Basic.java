@@ -16,7 +16,7 @@ import java.util.TreeSet;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.0.0.jar examples/Basic.java
+ *     java -cp target/packvium-1.1.0.jar examples/Basic.java
  * </pre>
  *
  * <p>Three things are worth noticing in a handful of lines.

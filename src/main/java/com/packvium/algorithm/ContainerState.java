@@ -198,7 +198,7 @@ public final class ContainerState {
         return signature.toString();
     }
 
-    /** O(points x solids) for the inside test, plus O(points) per sorted insertion. */
+    /** O(points x solids in one cell) for the inside test, plus O(points) per sorted insertion. */
     private void absorb(List<Point> candidates) {
         var inner = container.innerDimensions();
         long length = inner.length().ticks();
@@ -216,8 +216,10 @@ public final class ContainerState {
         }
     }
 
+    /** A solid containing the point is registered in the point's own cell. */
     private boolean insideSolid(Point point) {
-        for (long[] b : bounds) {
+        for (int position : index.bucketAt(point.x(), point.y(), point.z())) {
+            long[] b = bounds.get(position);
             if (b[0] <= point.x() && point.x() < b[3] && b[1] <= point.y() && point.y() < b[4]
                     && b[2] <= point.z() && point.z() < b[5]) {
                 return true;
@@ -266,10 +268,16 @@ public final class ContainerState {
                 new Point(surfaceX(o.y(), z2, o.x()), o.y(), z2));
     }
 
+    /*
+     * Each projection is the highest face at or below a ceiling among the solids whose footprint
+     * covers the point on the other two axes. The index's ray under the ceiling holds every such
+     * solid, and a maximum is indifferent to seeing one twice.
+     */
     private long surfaceZ(long x, long y, long ceiling) {
         long best = 0;
-        for (long[] b : bounds) {
-            if (b[5] <= ceiling && b[0] <= x && x < b[3] && b[1] <= y && y < b[4] && b[5] > best) {
+        for (int position : index.columnZ(x, y, ceiling)) {
+            long[] b = bounds.get(position);
+            if (b[5] <= ceiling && b[5] > best && b[0] <= x && x < b[3] && b[1] <= y && y < b[4]) {
                 best = b[5];
             }
         }
@@ -278,8 +286,9 @@ public final class ContainerState {
 
     private long surfaceY(long x, long z, long ceiling) {
         long best = 0;
-        for (long[] b : bounds) {
-            if (b[4] <= ceiling && b[0] <= x && x < b[3] && b[2] <= z && z < b[5] && b[4] > best) {
+        for (int position : index.columnY(x, z, ceiling)) {
+            long[] b = bounds.get(position);
+            if (b[4] <= ceiling && b[4] > best && b[0] <= x && x < b[3] && b[2] <= z && z < b[5]) {
                 best = b[4];
             }
         }
@@ -288,8 +297,9 @@ public final class ContainerState {
 
     private long surfaceX(long y, long z, long ceiling) {
         long best = 0;
-        for (long[] b : bounds) {
-            if (b[3] <= ceiling && b[1] <= y && y < b[4] && b[2] <= z && z < b[5] && b[3] > best) {
+        for (int position : index.columnX(y, z, ceiling)) {
+            long[] b = bounds.get(position);
+            if (b[3] <= ceiling && b[3] > best && b[1] <= y && y < b[4] && b[2] <= z && z < b[5]) {
                 best = b[3];
             }
         }

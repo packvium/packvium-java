@@ -21,8 +21,16 @@ public record Container(
         Map<String, Long> tagLimits,
         Optional<Weight> maxStackDensity,
         Optional<AxlePair> axles,
-        Optional<RateTable> rateTable) {
+        Optional<RateTable> rateTable,
+        List<String> accessDirections) {
 
+    /**
+     * {@code accessDirections} are the walls this container can be unloaded through.
+     * Empty means the horizontal half of route order is not enforced for it -- not that it is
+     * sealed: defaulting to all six would be a different nearly-nothing and would change answers
+     * for every caller who never set the field. Canonicalised here because every construction
+     * path passes through this constructor.
+     */
     public Container {
         obstacles = List.copyOf(obstacles);
         tags = List.copyOf(tags);
@@ -48,6 +56,7 @@ public record Container(
         }
         requireObstaclesInside(innerDimensions, obstacles);
         axles.ifPresent(pair -> requireAxlesInside(innerDimensions, pair));
+        accessDirections = canonicalDirections(accessDirections);
     }
 
     public static Builder builder(String id, Dimensions innerDimensions) {
@@ -71,6 +80,19 @@ public record Container(
         }
     }
 
+    /**
+     * Deduplicated into the canonical order rather than kept as given: two callers naming the
+     * same doors in a different order must search identically.
+     */
+    private static List<String> canonicalDirections(List<String> requested) {
+        for (String direction : requested) {
+            if (!SweptRegion.ALL_DIRECTIONS.contains(direction)) {
+                throw new IllegalArgumentException("unknown movement direction " + direction);
+            }
+        }
+        return SweptRegion.ALL_DIRECTIONS.stream().filter(requested::contains).toList();
+    }
+
     public static final class Builder {
         private final String id;
         private final Dimensions innerDimensions;
@@ -88,6 +110,7 @@ public record Container(
         private Weight maxStackDensity;
         private AxlePair axles;
         private RateTable rateTable;
+        private List<String> accessDirections = List.of();
 
         private Builder(String id, Dimensions innerDimensions) {
             this.id = id;
@@ -164,12 +187,17 @@ public record Container(
             return this;
         }
 
+        public Builder accessDirections(List<String> value) {
+            accessDirections = value;
+            return this;
+        }
+
         public Container build() {
             return new Container(id, innerDimensions, Optional.ofNullable(outerDimensions), tareWeight,
                     Optional.ofNullable(maxPayload), costMinor, Optional.ofNullable(quantity), obstacles, tags,
                     Optional.ofNullable(maxItems), metadata, voidFillReserveRatio, tagLimits,
                     Optional.ofNullable(maxStackDensity), Optional.ofNullable(axles),
-                    Optional.ofNullable(rateTable));
+                    Optional.ofNullable(rateTable), accessDirections);
         }
     }
 }

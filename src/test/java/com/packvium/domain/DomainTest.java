@@ -71,6 +71,20 @@ class DomainTest {
     }
 
     @Test
+    void containerDoorsAreDeduplicatedIntoTheCanonicalOrder() {
+        Container container = Container.builder("c", CUBE).accessDirections(List.of("-z", "+x", "-z")).build();
+        assertEquals(List.of("+x", "-z"), container.accessDirections());
+        assertTrue(Container.builder("c", CUBE).build().accessDirections().isEmpty());
+    }
+
+    @Test
+    void refusesAnUnknownDoor() {
+        IllegalArgumentException refusal = assertThrows(IllegalArgumentException.class,
+                () -> Container.builder("c", CUBE).accessDirections(List.of("up")).build());
+        assertEquals("unknown movement direction up", refusal.getMessage());
+    }
+
+    @Test
     void rateTableChargesTheFirstBracketAtOrAboveTheWeightWithCeilingSurcharge() {
         RateTable table = new RateTable(List.of(500L, 1000L), List.of(700L, 650L), 0, 125);
         assertEquals(788, table.chargeMinor(500));

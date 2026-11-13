@@ -22,7 +22,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.0.0.jar examples/Constraints.java
+ *     java -cp target/packvium-1.1.0.jar examples/Constraints.java
  * </pre>
  *
  * <p>The solver's job is not only to fit boxes. Most real packing rules are refusals -- this

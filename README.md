@@ -7,8 +7,8 @@ Packvium for Java is the Java port of Packvium. It accepts the same requests and
 the same results as the Python, PHP, Rust and JavaScript engines. It is checked against
 their shared conformance corpus, and each result matches the reference one byte for byte.
 
-> **Version 1.0.0.** This release corresponds to Packvium 1.0.0 in the other languages.
-> Its tests run the 1.0.0 conformance corpus: every packing fixture and every commerce
+> **Version 1.1.0.** This release corresponds to Packvium 1.1.0 in the other languages.
+> Its tests run the 1.1.0 conformance corpus: every packing fixture and every commerce
 > case. Field names, status codes and the objective vector stay the same for all of 1.x.
 > A later 1.x release can replace any earlier one without code changes.
 
@@ -16,7 +16,7 @@ their shared conformance corpus, and each result matches the reference one byte 
 <dependency>
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -75,7 +75,7 @@ PHP counterpart prints.
 
 ```bash
 mvn -q package -DskipTests
-java -cp target/packvium-1.0.0.jar examples/Objectives.java
+java -cp target/packvium-1.1.0.jar examples/Objectives.java
 ```
 
 ## Command line
@@ -87,7 +87,7 @@ formats are the ones every other Packvium engine uses.
 ```bash
 echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
        "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
-  | java -jar target/packvium-1.0.0.jar
+  | java -jar target/packvium-1.1.0.jar
 ```
 
 When a request is refused, the program exits with status 1 and prints the reason on
@@ -101,7 +101,8 @@ empty, it exits with status 2.
   item is placed.
 - **Real constraints.** Weight and payload limits, allowed rotations, keep-upright,
   floor-only, non-stackable, top-load limits, minimum support ratio, incompatible tags,
-  clearance and obstacles.
+  clearance and obstacles. Delivery stops keep earlier drops reachable, through the doors a
+  container names in `access_directions`.
 - **Several solvers, not one.** Grid, layer, extreme-point, maximal-space, homogeneous-block
   and exact search for small problems. Which ones run depends on the shape of the problem
   and the chosen profile.
@@ -124,6 +125,9 @@ places, and none of them shows up in the conformance corpus:
   the request is refused, whereas Python would keep calculating with larger integers.
 - The parallel portfolio cannot be enabled from a request, so it is not included. Every
   start runs one after another, which is how the reference engine runs them.
+
+`container.pallet_overhang_limit` is reserved in the request format but not implemented by
+any engine yet. A request that sets it is refused with `unsupported_feature`.
 
 The full conformance corpus runs in the Packvium suite repository, where all the engines
 are checked against the same fixtures. This repository runs the unit tests and the

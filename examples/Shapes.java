@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.0.0.jar examples/Shapes.java
+ *     java -cp target/packvium-1.1.0.jar examples/Shapes.java
  * </pre>
  *
  * <p>Every other example treats an item as the box it declares. That is the default and it is

@@ -6,6 +6,7 @@ import com.packvium.constraint.ConstraintContext;
 import com.packvium.constraint.LoadCalculator;
 import com.packvium.constraint.PlacementConstraint;
 import com.packvium.constraint.SupportConstraint;
+import com.packvium.constraint.internal.ConstraintActivity;
 import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
 import com.packvium.domain.HullShape;
@@ -198,13 +199,18 @@ public final class CandidateFinder {
         private final ContainerState state;
         private final ItemInstance item;
         private final PackingConfig config;
-        private final List<PlacementConstraint> constraints;
+        /** The chain with every rule that cannot fire for this item in this container removed. */
+        private final PlacementConstraint[] active;
+        /** Parallel to {@link #active}: whether reaching the rule counts as a support check. */
+        private final boolean[] countsSupport;
         private final SearchStats stats;
         private final Deadline deadline;
         private final CandidateScorer scorer;
         private final Optional<Integer> max;
         private final boolean compressionSensitive;
-        private final boolean reserveNeedsCandidate;
+        private final boolean nesting;
+        private final boolean reserveCheck;
+        private final BigInteger usable;
         private final boolean stackSensitive;
         private final boolean routeSensitive;
         private final int placementOffset;
@@ -217,17 +223,32 @@ public final class CandidateFinder {
             this.state = state;
             this.item = item;
             this.config = config;
-            this.constraints = constraints;
             this.stats = stats;
             this.deadline = deadline;
             this.scorer = scorer;
             this.max = max;
             this.compressionSensitive = compressionSensitive;
-            this.reserveNeedsCandidate = reserveNeedsCandidate;
+            this.nesting = item.item().nestingHeight().isPresent();
+            this.reserveCheck = state.container.voidFillReserveRatio() > 0 && reserveNeedsCandidate;
+            this.usable = reserveCheck ? state.usableVolume() : BigInteger.ZERO;
             this.stackSensitive = state.stackSensitive || item.item().isStackSensitive()
                     || state.container.maxStackDensity().isPresent();
             this.routeSensitive = state.routeSensitive || item.item().stopIndex().isPresent();
             this.placementOffset = state.bounds.size() - state.placements.size();
+            // Everything that decides whether a rule can fire is fixed for this call, so the chain
+            // is pruned once here rather than answered "allow" once per position. The support rule
+            // stays in regardless: supportChecks counts every time the chain reaches it.
+            List<PlacementConstraint> kept = new ArrayList<>(constraints.size());
+            for (PlacementConstraint constraint : constraints) {
+                if (!ConstraintActivity.isInert(constraint, state.container, item, stackSensitive, routeSensitive)) {
+                    kept.add(constraint);
+                }
+            }
+            this.active = kept.toArray(PlacementConstraint[]::new);
+            this.countsSupport = new boolean[active.length];
+            for (int index = 0; index < active.length; index++) {
+                countsSupport[index] = active[index] instanceof SupportConstraint;
+            }
         }
 
         void visit(Point point, List<Form> forms) {
@@ -244,7 +265,7 @@ public final class CandidateFinder {
                 }
                 long clearance = config.clearance().ticks();
                 Point position = new Point(point.x() + clearance, point.y() + clearance, point.z() + clearance);
-                Optional<Placement> tentative = item.item().nestingHeight().isPresent()
+                Optional<Placement> tentative = nesting
                         ? Optional.of(placementAt(position, point, form))
                         : Optional.empty();
                 if (blocked(point, x2, y2, z2, form, tentative) || !allowed(point, form)) {
@@ -252,8 +273,7 @@ public final class CandidateFinder {
                 }
                 Candidate candidate = new Candidate(point, position, form.rotation(), form.physical(),
                         form.envelope(), scorer.score(state, point, form.envelope()));
-                if (state.container.voidFillReserveRatio() > 0 && reserveNeedsCandidate
-                        && exceedsReserve(tentative.orElseGet(() -> placementAt(position, point, form)))) {
+                if (reserveCheck && exceedsReserve(tentative.orElseGet(() -> placementAt(position, point, form)))) {
                     continue;
                 }
                 stats.candidatesEvaluated++;
@@ -299,11 +319,11 @@ public final class CandidateFinder {
         private boolean allowed(Point point, Form form) {
             ConstraintContext context = new ConstraintContext(state.container, state.placements, item, point,
                     form.rotation(), form.physical(), form.envelope(), stackSensitive, routeSensitive);
-            for (PlacementConstraint constraint : constraints) {
-                if (constraint instanceof SupportConstraint) {
+            for (int index = 0; index < active.length; index++) {
+                if (countsSupport[index]) {
                     stats.supportChecks++;
                 }
-                if (!constraint.evaluate(context).allowed()) {
+                if (!active[index].evaluate(context).allowed()) {
                     return false;
                 }
             }
@@ -317,7 +337,7 @@ public final class CandidateFinder {
                 // compressible supports. If that upper bound fits, the exact non-local refresh
                 // cannot reject it; only candidates near the reserve boundary pay for it.
                 BigInteger upperBound = state.usedVolume.add(Nesting.occupiedVolume(reservePlacement));
-                if (upperBound.compareTo(state.usableVolume()) <= 0) {
+                if (upperBound.compareTo(usable) <= 0) {
                     projected = upperBound;
                 } else {
                     List<Placement> withCandidate = new ArrayList<>(state.placements);
@@ -327,7 +347,7 @@ public final class CandidateFinder {
             } else {
                 projected = state.usedVolume.add(Nesting.usedVolumeDelta(state.placements, reservePlacement));
             }
-            return projected.compareTo(state.usableVolume()) > 0;
+            return projected.compareTo(usable) > 0;
         }
 
         private void keep(Candidate candidate) {

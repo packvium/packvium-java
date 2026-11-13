@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 /**
  * Serialization: the same request as JSON, and what comes back.
@@ -15,7 +14,7 @@ import java.util.stream.Stream;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.0.0.jar examples/Serialization.java
+ *     java -cp target/packvium-1.1.0.jar examples/Serialization.java
  * </pre>
  *
  * <p>Everything the library can do is reachable over one JSON document, and that is not a
@@ -30,15 +29,18 @@ import java.util.stream.Stream;
  *   <li>lengths and weights travel as <em>decimal strings</em>, never as floats, so "12 3/8 in"
  *       survives the trip intact (see Units.java for why that matters);
  *   <li>a field this engine has deliberately not implemented is refused by name, but a key the
- *       parser simply does not recognise is ignored. The last section shows both -- the refusal
- *       through the guard's own test hook, because this engine has caught up and now refuses
- *       nothing of its own.
+ *       parser simply does not recognise is ignored. The last section shows both, and the
+ *       refusal of a field this engine has caught up on through the guard's own test hook.
  * </ul>
  */
 public final class Serialization {
     // ---------------------------------------------------------------------------------------
     // A request is one JSON document. This one is the whole vocabulary in miniature: units,
     // solver configuration, items with rules, and a container with a carrier rate card.
+    //
+    // `time_limit_ms` is there because an example must not change answer merely because the
+    // machine is busy: how many runners-up `top_k` finds is bounded by the wall clock unless a
+    // budget says otherwise. The value is a safety fuse, not a target.
     // ---------------------------------------------------------------------------------------
     private static final String REQUEST = """
             {
@@ -50,7 +52,8 @@ public final class Serialization {
                 "dimensional_weight_weight_unit": "kg",
                 "profile": "balanced",
                 "seed": 42,
-                "top_k": 2
+                "top_k": 2,
+                "time_limit_ms": 60000
               },
               "items": [
                 {
@@ -147,12 +150,16 @@ public final class Serialization {
 
         // And a field this engine names as not-yet-implemented is refused explicitly, so a
         // request written for a newer engine fails loudly instead of being half-honoured. The
-        // list below is the engine's own constant, and it is empty: implemented
-        // `convex_hull` and `compressible`, the last reserved names left on it, so this engine
-        // now serves every field and every `shape_type` value the schema defines.
+        // list below is the engine's own constant, by the scope each name appears in. Its one
+        // entry is `container.pallet_overhang_limit`, reserved in the schema at the 1.1.0
+        // contract freeze and refused by every engine until one implements it.
         UnsupportedFields current = UnsupportedFields.CURRENT;
-        List<List<String>> refused = Stream.of(current.request(), current.configuration(), current.item(),
-                current.container()).filter(fields -> !fields.isEmpty()).toList();
+        Map<String, List<String>> refused = new LinkedHashMap<>();
+        refused.put("request", current.request());
+        refused.put("configuration", current.configuration());
+        refused.put("item", current.item());
+        refused.put("container", current.container());
+        refused.values().removeIf(List::isEmpty);
         System.out.printf("fields this engine refuses by name: %s\n",
                 refused.isEmpty() ? "none" : JsonWriter.write(refused));
 
@@ -176,9 +183,9 @@ public final class Serialization {
         // a result on stdout -- which is how the cross-language conformance harness talks to
         // every engine:
         //
-        //     echo '<request json>' | java -jar target/packvium-1.0.0.jar
+        //     echo '<request json>' | java -jar target/packvium-1.1.0.jar
         // -----------------------------------------------------------------------------------
-        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.0.0.jar\n");
+        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.1.0.jar\n");
     }
 
     private static List<Map<?, ?>> objects(Object list) {

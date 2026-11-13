@@ -24,7 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Runs every shipped example the way its Javadoc tells a reader to, and checks what it prints
  * twice: against the committed Java output, and against what the PHP example of the same name
- * prints at tag v1.0.0.
+ * prints at tag v1.1.0.
  *
  * <p>An example that still runs but now prints a different answer teaches a different thing, and
  * only a committed output notices that. The PHP comparison keeps the answers themselves -- score
@@ -54,7 +54,7 @@ class ExamplesTest {
                             + " yet implement item.shape_type=convex_hull; the request was rejec",
                     "  what one looks like, from an engine that is not: unsupported_feature: the PHP engine does not"
                             + " yet implement item.shape_type=convex_hull; the request was reject",
-                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.0.0.jar",
+                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.1.0.jar",
                     "the CLI takes exactly the document above:  echo '...' | php bin/packvium"),
             "commerce", Map.of(
                     "   nothing matched, so the shipment is allowed with no citation: null",

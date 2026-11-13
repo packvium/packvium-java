@@ -182,6 +182,7 @@ public final class RequestDecoder {
                 .maxStackDensity(weight(container, "max_stack_density", null))
                 .axles(container.has("axles") ? axles(container.list("axles"), unit) : null)
                 .rateTable(container.has("rate_table") ? rateTable(container.child("rate_table")) : null)
+                .accessDirections(container.strings("access_directions"))
                 .build();
     }
 
