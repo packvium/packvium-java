@@ -56,6 +56,10 @@ public record PackingConfig(
         return builder(SolverProfile.BALANCED).build();
     }
 
+    public static PackingConfig balanced(long timeLimitMs) {
+        return builder(SolverProfile.BALANCED).timeLimitMs(timeLimitMs).build();
+    }
+
     public static PackingConfig quality() {
         return builder(SolverProfile.QUALITY).timeLimitMs(5000).topK(5).multiStartOrders(24)
                 .maxCandidatesPerItem(16).containerPlanBeamWidth(16).containerPlanNodeLimit(100_000).build();

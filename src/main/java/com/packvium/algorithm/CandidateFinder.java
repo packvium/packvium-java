@@ -18,19 +18,25 @@ import com.packvium.domain.Point;
 import com.packvium.domain.Rotation;
 import com.packvium.domain.ShapeType;
 import com.packvium.extension.CandidateScorer;
+import com.packvium.support.SortKey;
 import com.packvium.support.StableSorter;
 import com.packvium.unit.Weight;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.PriorityQueue;
 
 /**
  * Feasible placements of one item in one container state, best first.
  *
  * <p>O(p * r * (q + k)) per call for p scanned points (capped at maxCandidatePoints), r distinct
- * rotations, q solids returned by the spatial index per query and k constraint checks.
+ * rotations, q solids returned by the spatial index per query and k constraint checks. Selection
+ * adds O(c log m) time and O(m) space for c feasible candidates when at most m are asked for,
+ * and O(c log c) time and O(c) space when every one is.
  */
 public final class CandidateFinder {
     private CandidateFinder() {
@@ -194,6 +200,14 @@ public final class CandidateFinder {
         }
     }
 
+    /** A retained candidate and the order it was kept in, which breaks ties between equal scores. */
+    private record Ranked(Candidate candidate, long ordinal) {
+    }
+
+    /** The largest score, then the latest ordinal, is evicted first. */
+    private static final Comparator<Ranked> WORST_FIRST = Comparator.<Ranked, SortKey>comparing(
+            ranked -> ranked.candidate().score()).thenComparingLong(Ranked::ordinal).reversed();
+
     /** The per-call scan state: what has been found so far and the inputs every point shares. */
     private static final class Scan {
         private final ContainerState state;
@@ -215,7 +229,10 @@ public final class CandidateFinder {
         private final boolean routeSensitive;
         private final int placementOffset;
         private final List<Candidate> found = new ArrayList<>();
+        /** With a cap above one: the best {@code max} so far, worst on top, so it is the one evicted. */
+        private final PriorityQueue<Ranked> retained;
         private Candidate best;
+        private long enumerated;
 
         Scan(ContainerState state, ItemInstance item, PackingConfig config, List<PlacementConstraint> constraints,
                 SearchStats stats, Deadline deadline, CandidateScorer scorer, Optional<Integer> max,
@@ -227,6 +244,7 @@ public final class CandidateFinder {
             this.deadline = deadline;
             this.scorer = scorer;
             this.max = max;
+            this.retained = max.isPresent() && max.get() > 1 ? new PriorityQueue<>(max.get(), WORST_FIRST) : null;
             this.compressionSensitive = compressionSensitive;
             this.nesting = item.item().nestingHeight().isPresent();
             this.reserveCheck = state.container.voidFillReserveRatio() > 0 && reserveNeedsCandidate;
@@ -271,13 +289,16 @@ public final class CandidateFinder {
                 if (blocked(point, x2, y2, z2, form, tentative) || !allowed(point, form)) {
                     continue;
                 }
-                Candidate candidate = new Candidate(point, position, form.rotation(), form.physical(),
-                        form.envelope(), scorer.score(state, point, form.envelope()));
+                SortKey score = scorer.score(state, point, form.envelope());
                 if (reserveCheck && exceedsReserve(tentative.orElseGet(() -> placementAt(position, point, form)))) {
                     continue;
                 }
                 stats.candidatesEvaluated++;
-                keep(candidate);
+                // Selection follows every predicate and scorer call, so extensions and effort
+                // counters observe exactly the same enumeration as a full sort would.
+                if (survives(score)) {
+                    keep(new Candidate(point, position, form.rotation(), form.physical(), form.envelope(), score));
+                }
             }
         }
 
@@ -350,11 +371,28 @@ public final class CandidateFinder {
             return projected.compareTo(usable) > 0;
         }
 
+        /**
+         * Whether a candidate can still be among the best. A later candidate never displaces an
+         * equal score, which is exactly the tie-break a stable sort of the full list applies.
+         */
+        private boolean survives(SortKey score) {
+            if (max.isPresent() && max.get() == 1) {
+                return best == null || score.compareTo(best.score()) < 0;
+            }
+            return retained == null || retained.size() < max.get()
+                    || score.compareTo(retained.peek().candidate().score()) < 0;
+        }
+
         private void keep(Candidate candidate) {
             if (max.isPresent() && max.get() == 1) {
-                if (best == null || candidate.score().compareTo(best.score()) < 0) {
-                    best = candidate;
+                best = candidate;
+                return;
+            }
+            if (retained != null) {
+                if (retained.size() == max.get()) {
+                    retained.poll();
                 }
+                retained.add(new Ranked(candidate, enumerated++));
                 return;
             }
             found.add(candidate);
@@ -363,6 +401,14 @@ public final class CandidateFinder {
         List<Candidate> result() {
             if (max.isPresent() && max.get() == 1) {
                 return best == null ? List.of() : List.of(best);
+            }
+            if (retained != null) {
+                List<Candidate> ranked = new ArrayList<>(retained.size());
+                while (!retained.isEmpty()) {
+                    ranked.add(retained.poll().candidate());
+                }
+                Collections.reverse(ranked);
+                return List.copyOf(ranked);
             }
             List<Candidate> sorted = StableSorter.sortBy(found, Candidate::score);
             return max.map(limit -> sorted.subList(0, Math.min(limit, sorted.size()))).map(List::copyOf)

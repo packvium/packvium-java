@@ -23,16 +23,20 @@ import org.junit.jupiter.api.TestFactory;
 
 /**
  * Runs every shipped example the way its Javadoc tells a reader to, and checks what it prints
- * twice: against the committed Java output, and against what the PHP example of the same name
- * prints at tag v1.1.0.
+ * twice: against the committed Java output, and against what the reference example of the same
+ * name prints at tag v1.2.0.
+ *
+ * <p>The reference is PHP, the port's model, except where PHP has no such example:
+ * {@code execution} continues into operator locks and {@code intelligence} exists at all only in
+ * Python, so those two are held to the Python output ({@link #REFERENCE}).
  *
  * <p>An example that still runs but now prints a different answer teaches a different thing, and
- * only a committed output notices that. The PHP comparison keeps the answers themselves -- score
- * vectors, placements, refusal codes -- identical across languages. Lines that only name the
- * language (a file name, a command, how a missing value is spelt) are the one permitted
- * difference, and each is listed in {@link #LANGUAGE_WORDING}. Nothing is masked: the examples
- * print no elapsed times, versions or backend names, which are the only text the tag's own runner
- * masks.
+ * only a committed output notices that. The reference comparison keeps the answers themselves --
+ * score vectors, placements, refusal codes -- identical across languages. Lines that only name the
+ * language (a file name, a command, how a missing value or a boolean is spelt) are the one
+ * permitted difference, and each is listed in {@link #LANGUAGE_WORDING}. Nothing is masked: the
+ * examples print no elapsed times, versions or backend names, which are the only text the tag's own
+ * runner masks.
  */
 class ExamplesTest {
     private static final Path EXAMPLES = Path.of("examples");
@@ -42,8 +46,42 @@ class ExamplesTest {
     private static final Pattern CLASS_JAVADOC = Pattern.compile("/\\*\\*(.*?)\\*/\\s*public\\s+final\\s+class",
             Pattern.DOTALL);
 
-    /** Per example, each Java line that differs from PHP only in naming the language, and its PHP line. */
+    /** The reference language of each example whose reference is not PHP. */
+    private static final Map<String, String> REFERENCE = Map.of("execution", "python", "intelligence", "python");
+
+    /** Per example, each Java line that differs from the reference only in naming the language, and that line. */
     private static final Map<String, Map<String, String>> LANGUAGE_WORDING = Map.of(
+            "execution", Map.ofEntries(
+                    // The reference's section 4 speaks for its four engines and names its
+                    // JavaScript example; this port's text speaks for this engine instead.
+                    Map.entry("4. One plan, every engine, the same bytes",
+                            "4. One plan, four engines, the same bytes"),
+                    Map.entry("  Hand the same *result* to any Packvium adapter, this one included, and it emits",
+                            "  Hand the same *result* to all four adapters and they emit the same bytes. That"),
+                    Map.entry("  the same bytes. That is stricter than the packing contract, and it can be: a",
+                            "  is stricter than the packing contract, and it can be: a plan is derived from a"),
+                    Map.entry("  plan is derived from a result, so there is nothing left to differ about.",
+                            "  result, so there is nothing left to differ about."),
+                    Map.entry("  It does not follow that every engine packing the same *request* agrees. This",
+                            "  It does not follow that four engines packing the same *request* agree. Python"),
+                    Map.entry("  engine, like Python and PHP, is held to identical placements and produces this",
+                            "  and PHP are held to identical placements and do produce this exact form; Rust"),
+                    Map.entry("  exact form; the Rust and JavaScript engines are held to a valid answer at or",
+                            "  and JavaScript are held to a valid answer at or above the objective floor, and"),
+                    Map.entry("  above the objective floor, so their plan for this request can be a different",
+                            "  `examples/execution.mjs` prints 1280 bytes here rather than 1877 for that"),
+                    Map.entry("  length. Whose packing is better is a question the plan never answers.",
+                            "  reason. Whose packing is better is a question the plan never answers."),
+                    Map.entry("  preserved: true", "  preserved: True"),
+                    Map.entry("  the approved plan is untouched: true", "  the approved plan is untouched: True"),
+                    Map.entry("  a lock the solve cannot honour -> preserved=false, 1 lock reported back",
+                            "  a lock the solve cannot honour -> preserved=False, 1 lock reported back")),
+            "intelligence", Map.of(
+                    // Thin evidence is an empty Optional where Python returns None.
+                    "  minimum_confidence=0.9 -> Optional.empty",
+                    "  minimum_confidence=0.9 -> None",
+                    "  met. `Optional.empty()` is the whole answer: no low-confidence proposal to weigh.",
+                    "  met. `None` is the whole answer: there is no low-confidence proposal to weigh."),
             "basic", Map.of(
                     "the full result as a plain array is what Serialization.java explores:",
                     "the full result as a plain array is what serialization.php explores:"),
@@ -54,7 +92,7 @@ class ExamplesTest {
                             + " yet implement item.shape_type=convex_hull; the request was rejec",
                     "  what one looks like, from an engine that is not: unsupported_feature: the PHP engine does not"
                             + " yet implement item.shape_type=convex_hull; the request was reject",
-                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.1.0.jar",
+                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.2.0.jar",
                     "the CLI takes exactly the document above:  echo '...' | php bin/packvium"),
             "commerce", Map.of(
                     "   nothing matched, so the shipment is allowed with no citation: null",
@@ -84,18 +122,19 @@ class ExamplesTest {
         assertEquals(0, process.exitValue(), example + " failed:\n" + errors.join());
 
         assertEquals(expected(name + ".out"), output, example + " drifted from its recorded output");
-        assertEquals(expected("php/" + name + ".out"), inPhpWording(name, output),
-                example + " answers differently from the PHP example");
+        String reference = REFERENCE.getOrDefault(name, "php");
+        assertEquals(expected(reference + "/" + name + ".out"), inReferenceWording(name, output),
+                example + " answers differently from the " + reference + " example");
     }
 
-    private static String inPhpWording(String name, String output) {
+    private static String inReferenceWording(String name, String output) {
         Map<String, String> wording = LANGUAGE_WORDING.getOrDefault(name, Map.of());
         String[] lines = output.split("\n", -1);
         long replaced = 0;
         for (int index = 0; index < lines.length; index++) {
-            String php = wording.get(lines[index]);
-            if (php != null) {
-                lines[index] = php;
+            String referenceLine = wording.get(lines[index]);
+            if (referenceLine != null) {
+                lines[index] = referenceLine;
                 replaced++;
             }
         }

@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.1.0.jar examples/Shapes.java
+ *     java -cp target/packvium-1.2.0.jar examples/Shapes.java
  * </pre>
  *
  * <p>Every other example treats an item as the box it declares. That is the default and it is
@@ -81,8 +81,15 @@ public final class Shapes {
         return Map.of("x", x, "y", y, "z", z);
     }
 
+    /**
+     * Every solve here carries a safety fuse. An example must not change answer merely because the
+     * host was busy: these solves need a fraction of the budget, and the generous wall-clock value
+     * only stops a loaded machine cutting the multi-start portfolio short and letting a different
+     * start win.
+     */
     private static Map<String, Object> request(List<Map<String, Object>> items, List<Map<String, Object>> containers) {
-        return Map.of("units", Map.of("length", "mm"), "items", items, "containers", containers);
+        return Map.of("units", Map.of("length", "mm"), "configuration", Map.of("time_limit_ms", 60_000L),
+                "items", items, "containers", containers);
     }
 
     private static List<Map<String, Object>> crate(String length, String width, String height) {

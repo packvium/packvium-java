@@ -17,7 +17,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.1.0.jar examples/Objectives.java
+ *     java -cp target/packvium-1.2.0.jar examples/Objectives.java
  * </pre>
  *
  * <p>Every solve returns the arrangement that scores best -- but "best" is a choice, and it is
@@ -30,6 +30,11 @@ import java.util.List;
  * See docs/OBJECTIVE.md for the full key ordering.
  */
 public final class Objectives {
+    // An example must not change answer merely because the host was busy. These solves need a
+    // fraction of the budget; the generous wall-clock value is only a safety fuse, so a loaded
+    // machine cannot cut the multi-start portfolio short and let a different start win.
+    private static final long SAFETY_FUSE_MS = 60_000;
+
     private static final List<Item> WIDGETS = List.of(
             Item.builder("widget", Dimensions.mm("100", "100", "100"))
                     .weight(Weight.parse("500 g")).quantity(8).build());
@@ -44,7 +49,7 @@ public final class Objectives {
         Container roomy = Container.builder("roomy", Dimensions.mm("400", "400", "400"))
                 .maxPayload(Weight.parse("20 kg")).costMinor(150).build();
 
-        System.out.printf("%-18s %s\n", "default", solve(PackingConfig.balanced(), List.of(snug, roomy)));
+        System.out.printf("%-18s %s\n", "default", solve(PackingConfig.balanced(SAFETY_FUSE_MS), List.of(snug, roomy)));
 
         // ---------------------------------------------------------------------------------
         // `lowest_cost` -- the cheapest *packaging*. `costMinor` is what the box costs you, so
@@ -131,9 +136,9 @@ public final class Objectives {
         return String.format("%-6s score=%s", chosen, JsonWriter.write(result.score()));
     }
 
-    /** Every other setting as {@code new PackingConfig()} leaves it: the balanced profile. */
+    /** Every other setting as {@code new PackingConfig()} leaves it, the balanced profile, bar the fuse. */
     private static PackingConfig.Builder objective(String objective) {
-        return PackingConfig.builder(SolverProfile.BALANCED).objective(objective);
+        return PackingConfig.builder(SolverProfile.BALANCED).objective(objective).timeLimitMs(SAFETY_FUSE_MS);
     }
 
     /** The common cm/kg carrier convention: 5000 cubic centimetres bill as one kilogram. */

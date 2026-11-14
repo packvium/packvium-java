@@ -20,6 +20,7 @@ import com.packvium.unit.Length;
 import com.packvium.unit.Rounding;
 import com.packvium.unit.Weight;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,29 @@ public final class RequestDecoder {
         return new DecodedRequest(config, items, containers, output.text("length_unit", unit),
                 output.text("weight_unit", WEIGHT_UNIT), CatalogVersions.read(request.raw("catalog_versions_used")),
                 Optional.ofNullable(request.raw("policy")));
+    }
+
+    /**
+     * The request's items, keyed by id, without decoding or checking anything else in it.
+     *
+     * <p>For a caller that must know an item's dimensions before deciding whether to pack at all,
+     * as a lock set is checked against the request before any solve. Read the way {@link #decode}
+     * reads them, in the request's own length unit; a missing {@code items} list is empty, and a
+     * repeated id keeps its last entry. O(n) in the items.
+     */
+    public static Map<String, Item> itemsById(Object raw) {
+        Fields request = new Fields(raw, "request");
+        String unit = request.child("units").text("length", "mm");
+        Map<String, Item> items = new LinkedHashMap<>();
+        Object entries = request.raw("items");
+        if (entries == null) {
+            return Map.of();
+        }
+        for (Object entry : listOf(entries, "items")) {
+            Item item = item(new Fields(entry, "item"), unit);
+            items.put(item.id(), item);
+        }
+        return Collections.unmodifiableMap(items);
     }
 
     private static PackingConfig config(Fields config, String unit) {

@@ -9,6 +9,7 @@ import com.packvium.domain.ItemInstance;
 import com.packvium.domain.Placement;
 import com.packvium.support.SortKey;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +23,10 @@ import java.util.Optional;
  * adjacent nesting predecessor exists, all same-column face edges are replaced by that
  * predecessor alone. Final edge and child lists retain ascending unit-index order, preserving
  * ContactGraph's remainder/traversal contract.
+ *
+ * <p>The descending load order is computed once per graph and shared by every analysis of it;
+ * a graph extended by one unit derives it from its parent's in O(n) rather than sorting again
+ * in O(n log n).
  */
 public final class LoadSupportGraph {
     private record NestingEntry(String item, long depth, long x1, long y1, long x2, long y2, long z1, long z2,
@@ -51,6 +56,10 @@ public final class LoadSupportGraph {
     /** Only populated with nesting; without it this graph <em>is</em> the face graph. */
     private final List<List<ContactEdge>> nestedSupporters;
     private final List<List<Integer>> nestedChildren;
+    /** The parent's descending order when this graph is the parent plus one unit, else null. */
+    private final int[] priorDescending;
+    /** Computed on first use; per-solve state, like everything a constraint holds. */
+    private int[] descending;
 
     public LoadSupportGraph(List<LoadUnit> units) {
         this(units, 1);
@@ -74,6 +83,7 @@ public final class LoadSupportGraph {
         this.face = new ContactGraph(boxes, cellHint);
         this.units = List.copyOf(units);
         this.nested = !nesting.isEmpty();
+        this.priorDescending = null;
         if (!nested) {
             this.nestedSupporters = List.of();
             this.nestedChildren = List.of();
@@ -128,12 +138,13 @@ public final class LoadSupportGraph {
         this.nestedChildren = List.copyOf(frozen);
     }
 
-    private LoadSupportGraph(ContactGraph face, List<LoadUnit> units) {
+    private LoadSupportGraph(ContactGraph face, List<LoadUnit> units, int[] priorDescending) {
         this.face = face;
         this.units = units;
         this.nested = false;
         this.nestedSupporters = List.of();
         this.nestedChildren = List.of();
+        this.priorDescending = priorDescending;
     }
 
     private static boolean sameColumn(NestingEntry lower, NestingEntry upper) {
@@ -168,11 +179,70 @@ public final class LoadSupportGraph {
         // Without nesting this graph *is* the face graph, so its edges are read straight off
         // it rather than patching a copy of the old ones -- a second implementation of the same
         // rule would be free to drift from the first.
-        return new LoadSupportGraph(face.withBox(unit.box()), List.copyOf(extended));
+        return new LoadSupportGraph(face.withBox(unit.box()), List.copyOf(extended), descending());
     }
 
     public LoadSupportGraph withUnit(LoadUnit unit) {
         return withUnit(unit, 1);
+    }
+
+    /**
+     * Unit indices from the highest top face down: by top z, then bottom z, both descending,
+     * then index ascending -- the order loads propagate in. The returned array is shared, so a
+     * caller must not write to it.
+     *
+     * <p>A graph extended by one unit inserts that unit into its parent's order by binary
+     * search: O(log n) comparisons and an O(n) copy, where sorting again is O(n log n).
+     */
+    int[] descending() {
+        if (descending != null) {
+            return descending;
+        }
+        if (priorDescending == null) {
+            descending = sortedDescending();
+            return descending;
+        }
+        int added = units.size() - 1;
+        int low = 0;
+        int high = priorDescending.length;
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (compareDescending(added, priorDescending[middle]) < 0) {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        int[] order = new int[priorDescending.length + 1];
+        System.arraycopy(priorDescending, 0, order, 0, low);
+        order[low] = added;
+        System.arraycopy(priorDescending, low, order, low + 1, priorDescending.length - low);
+        descending = order;
+        return descending;
+    }
+
+    private int[] sortedDescending() {
+        Integer[] order = new Integer[units.size()];
+        for (int index = 0; index < order.length; index++) {
+            order[index] = index;
+        }
+        Arrays.sort(order, this::compareDescending);
+        int[] sorted = new int[order.length];
+        for (int index = 0; index < order.length; index++) {
+            sorted[index] = order[index];
+        }
+        return sorted;
+    }
+
+    private int compareDescending(int left, int right) {
+        AxisAlignedBox leftBox = units.get(left).box();
+        AxisAlignedBox rightBox = units.get(right).box();
+        int top = Long.compare(rightBox.z2(), leftBox.z2());
+        if (top != 0) {
+            return top;
+        }
+        int bottom = Long.compare(rightBox.origin().z(), leftBox.origin().z());
+        return bottom != 0 ? bottom : Integer.compare(left, right);
     }
 
     public List<ContactEdge> supporters(int index) {

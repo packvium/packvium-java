@@ -22,7 +22,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.1.0.jar examples/Constraints.java
+ *     java -cp target/packvium-1.2.0.jar examples/Constraints.java
  * </pre>
  *
  * <p>The solver's job is not only to fit boxes. Most real packing rules are refusals -- this
@@ -33,6 +33,11 @@ import java.util.List;
  * None of them needs a custom class, and none changes how you call {@code pack}.
  */
 public final class Constraints {
+    // An example must not change answer merely because the host was busy. These solves need a
+    // fraction of the budget; the generous wall-clock value is only a safety fuse, so a loaded
+    // machine cannot cut the multi-start portfolio short and let a different start win.
+    private static final long SAFETY_FUSE_MS = 60_000;
+
     // The six axis-aligned orientations, which is also the default. Narrow this list when an
     // item may only be set down certain ways -- `List.of(Rotation.LWH, Rotation.WLH)` keeps a
     // carton flat while still letting it turn on the spot.
@@ -77,7 +82,7 @@ public final class Constraints {
                         .costMinor(400)
                         .build());
 
-        PackingResult result = new Packer(PackingConfig.balanced()).pack(items, containers);
+        PackingResult result = new Packer(PackingConfig.balanced(SAFETY_FUSE_MS)).pack(items, containers);
 
         System.out.printf("status: %s\n", result.status().wireName());
         System.out.printf("containers opened: %d\n", result.containers().size());
@@ -194,7 +199,7 @@ public final class Constraints {
     }
 
     private static void report(String label, List<Item> items, List<Container> containers) {
-        PackingResult outcome = new Packer(PackingConfig.balanced()).pack(items, containers);
+        PackingResult outcome = new Packer(PackingConfig.balanced(SAFETY_FUSE_MS)).pack(items, containers);
         System.out.printf("  %s: %d container(s), %d placed, %d refused\n",
                 label, outcome.containers().size(), outcome.packedItemCount(), outcome.unpacked().size());
         for (UnpackedItem unpacked : outcome.unpacked()) {

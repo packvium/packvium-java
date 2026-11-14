@@ -16,7 +16,7 @@ import java.util.TreeSet;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.1.0.jar examples/Basic.java
+ *     java -cp target/packvium-1.2.0.jar examples/Basic.java
  * </pre>
  *
  * <p>Three things are worth noticing in a handful of lines.
@@ -36,7 +36,10 @@ import java.util.TreeSet;
  */
 public final class Basic {
     public static void main(String[] arguments) {
-        PackingResult result = new Packer(PackingConfig.balanced()).pack(
+        // An example must not change answer merely because the host was busy. This solve needs
+        // a fraction of the budget below; the generous wall-clock value is only a safety fuse, so
+        // a loaded machine cannot cut the multi-start portfolio short and let a different start win.
+        PackingResult result = new Packer(PackingConfig.balanced(60_000)).pack(
                 List.of(
                         Item.builder("book", Dimensions.mm("210", "140", "30"))
                                 .weight(Weight.parse("450 g")).quantity(4).build(),

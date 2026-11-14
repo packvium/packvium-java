@@ -21,7 +21,8 @@ import java.util.Set;
  * <p>LoadCalculator remains the allocation-owning facade. Search code that already owns an
  * incremental LoadSupportGraph uses this session instead, so the graph and its derived
  * load/ancestor vectors are each computed at most once. Building the load vector is
- * O(n log n + E) after the graph exists; the ancestor sets are O(n^2) worst case, as the
+ * O(n + E) over the graph's descending order, which costs O(n log n) for a fresh graph and
+ * O(n) for one extended by a unit; the ancestor sets are O(n^2) worst case, as the
  * reference engine's are. Query methods are O(n) and never rebuild contact geometry.
  */
 public final class LoadAnalysis {
@@ -54,21 +55,7 @@ public final class LoadAnalysis {
     private long[] computeTopLoads() {
         int count = units.size();
         long[] loads = new long[count];
-        List<Integer> order = new ArrayList<>(count);
-        for (int index = 0; index < count; index++) {
-            order.add(index);
-        }
-        order.sort((a, b) -> {
-            AxisAlignedBox left = units.get(a).box();
-            AxisAlignedBox right = units.get(b).box();
-            int top = Long.compare(right.z2(), left.z2());
-            if (top != 0) {
-                return top;
-            }
-            int bottom = Long.compare(right.origin().z(), left.origin().z());
-            return bottom != 0 ? bottom : Integer.compare(a, b);
-        });
-        for (int upperIndex : order) {
+        for (int upperIndex : graph.descending()) {
             List<ContactEdge> supports = graph.supporters(upperIndex);
             long totalArea = 0;
             for (ContactEdge edge : supports) {

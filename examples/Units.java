@@ -15,7 +15,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.1.0.jar examples/Units.java
+ *     java -cp target/packvium-1.2.0.jar examples/Units.java
  * </pre>
  *
  * <p>Packing is arithmetic about physical space, and floating point is the wrong tool for it:
@@ -86,7 +86,10 @@ public final class Units {
                 JsonWriter.write(Length.parse("12 3/8 in").toMap("mm")),
                 JsonWriter.write(Weight.parse("2 3/4 lb").toMap("g")));
 
-        PackingResult result = new Packer(PackingConfig.balanced()).pack(
+        // An example must not change answer merely because the host was busy. This solve needs
+        // a fraction of the budget below; the generous wall-clock value is only a safety fuse, so
+        // a loaded machine cannot cut the multi-start portfolio short and let a different start win.
+        PackingResult result = new Packer(PackingConfig.balanced(60_000)).pack(
                 List.of(Item.builder("shelf", Dimensions.inches("12 3/8", "9 1/2", "3/4"))
                         .weight(Weight.parse("2 3/4 lb")).quantity(3).build()),
                 List.of(Container.builder("carton", Dimensions.inches("13", "10", "4"))

@@ -16,10 +16,8 @@ import com.packvium.support.SortKey;
 import com.packvium.unit.Weight;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Regular lattice for a single item type.
@@ -71,15 +69,24 @@ public final class GridSolver implements SingleContainerSolver {
         return copy;
     }
 
+    /** O(d * r) for d distinct runs of items, stopping at the first profile that differs. */
     public boolean supports(List<ItemInstance> items) {
         if (items.isEmpty()) {
             return false;
         }
-        Set<List<Object>> profiles = new HashSet<>();
-        for (ItemInstance item : items) {
-            profiles.add(latticeProfile(item.item()));
+        Item prototype = items.get(0).item();
+        List<Object> profile = latticeProfile(prototype);
+        Item previous = prototype;
+        for (ItemInstance instance : items) {
+            Item item = instance.item();
+            // Quantities share one immutable Item, so each distinct run is profiled once
+            // against the prototype; identity is only a shortcut, equality still decides.
+            if (item != prototype && item != previous && !latticeProfile(item).equals(profile)) {
+                return false;
+            }
+            previous = item;
         }
-        return profiles.size() == 1;
+        return true;
     }
 
     @Override
