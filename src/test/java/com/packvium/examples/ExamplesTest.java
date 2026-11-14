@@ -114,7 +114,11 @@ class ExamplesTest {
         assertTrue(runItLine(Files.readString(example, StandardCharsets.UTF_8)),
                 example + " has no class Javadoc with a \"Run it:\" line");
 
-        Process process = new ProcessBuilder(javaBinary(), "-cp", CLASSES.toString(), example.toString()).start();
+        // Since JDK 18, System.out encodes with the console's code page (Cp1252 on a Windows
+        // runner), which would turn the examples' dashes into bytes this test cannot read as
+        // UTF-8. JDK 17 ignores stdout.encoding and follows file.encoding instead.
+        Process process = new ProcessBuilder(javaBinary(), "-Dstdout.encoding=UTF-8", "-Dfile.encoding=UTF-8",
+                "-cp", CLASSES.toString(), example.toString()).start();
         // Drained concurrently: a full stderr pipe would block the example before it exits.
         CompletableFuture<String> errors = CompletableFuture.supplyAsync(() -> read(process.getErrorStream()));
         String output = read(process.getInputStream());
