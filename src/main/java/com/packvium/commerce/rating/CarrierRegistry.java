@@ -12,8 +12,8 @@ import java.util.Map;
  *
  * <p>This module computes a rate breakdown from first-party tariff data a caller publishes
  * into the registry -- it does not fetch, scrape or embed any real carrier's published
- * rates. Complexity: publish O(1); every resolution is one O(h) scan of that pair's
- * history; rating one request is O(a) in requested accessorials.
+ * rates. Complexity: publish O(1); a pinned version O(1); resolving by instant is one O(h)
+ * scan of that pair's history; rating one request is O(a) in requested accessorials.
  */
 public final class CarrierRegistry {
     private final Map<String, List<Tariff>> versions = new LinkedHashMap<>();
@@ -41,11 +41,11 @@ public final class CarrierRegistry {
         return List.copyOf(history(carrierId, serviceId));
     }
 
+    /** O(1): version n of a pair is always its n-th published tariff, so it is read by position. */
     public Tariff tariff(String carrierId, String serviceId, long version) {
-        for (Tariff tariff : history(carrierId, serviceId)) {
-            if (tariff.version() == version) {
-                return tariff;
-            }
+        List<Tariff> history = history(carrierId, serviceId);
+        if (version >= 1 && version <= history.size()) {
+            return history.get((int) (version - 1));
         }
         throw new TariffNotFoundException(carrierId + "/" + serviceId + " has no version " + version);
     }

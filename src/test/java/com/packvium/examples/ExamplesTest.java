@@ -24,11 +24,12 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Runs every shipped example the way its Javadoc tells a reader to, and checks what it prints
  * twice: against the committed Java output, and against what the reference example of the same
- * name prints at tag v1.2.0.
+ * name prints at tag v1.3.0.
  *
  * <p>The reference is PHP, the port's model, except where PHP has no such example:
- * {@code execution} continues into operator locks and {@code intelligence} exists at all only in
- * Python, so those two are held to the Python output ({@link #REFERENCE}).
+ * {@code execution} continues into operator locks, {@code intelligence} exists at all only in
+ * Python, and PHP's {@code artifacts} packs another request without a loading order, so those three
+ * are held to the Python output ({@link #REFERENCE}).
  *
  * <p>An example that still runs but now prints a different answer teaches a different thing, and
  * only a committed output notices that. The reference comparison keeps the answers themselves --
@@ -47,7 +48,8 @@ class ExamplesTest {
             Pattern.DOTALL);
 
     /** The reference language of each example whose reference is not PHP. */
-    private static final Map<String, String> REFERENCE = Map.of("execution", "python", "intelligence", "python");
+    private static final Map<String, String> REFERENCE = Map.of("execution", "python", "intelligence", "python",
+            "artifacts", "python");
 
     /** Per example, each Java line that differs from the reference only in naming the language, and that line. */
     private static final Map<String, Map<String, String>> LANGUAGE_WORDING = Map.of(
@@ -82,6 +84,9 @@ class ExamplesTest {
                     "  minimum_confidence=0.9 -> None",
                     "  met. `Optional.empty()` is the whole answer: no low-confidence proposal to weigh.",
                     "  met. `None` is the whole answer: there is no low-confidence proposal to weigh."),
+            "artifacts", Map.of(
+                    "  contains a script or an external resource: false",
+                    "  contains a script or an external resource: False"),
             "basic", Map.of(
                     "the full result as a plain array is what Serialization.java explores:",
                     "the full result as a plain array is what serialization.php explores:"),
@@ -92,7 +97,7 @@ class ExamplesTest {
                             + " yet implement item.shape_type=convex_hull; the request was rejec",
                     "  what one looks like, from an engine that is not: unsupported_feature: the PHP engine does not"
                             + " yet implement item.shape_type=convex_hull; the request was reject",
-                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.2.0.jar",
+                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.3.0.jar",
                     "the CLI takes exactly the document above:  echo '...' | php bin/packvium"),
             "commerce", Map.of(
                     "   nothing matched, so the shipment is allowed with no citation: null",

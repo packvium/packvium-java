@@ -8,14 +8,15 @@ where each item sits inside them. You describe the items (size, weight, how they
 turned, what may sit on them) and the containers (inner size, payload, cost), and it
 returns placements, the items it could not place and why, and a score you can compare.
 Around that core sit the pieces a warehouse or shipping system needs: shipping quotes and
-eligibility policy, execution plans an operator can follow, operator locks, and tools to
+eligibility policy, execution plans an operator can follow, a portable work-order document
+with CSV and printable exports, operator locks, and tools to
 prove that a change to your carton set is an improvement before you publish it.
 
 This is the Java port of Packvium. It reads the same JSON requests as the Python and PHP
 reference engines, and its tests hold it to their answers byte for byte on the shared
 conformance corpus.
 
-> **Version 1.2.0.** This release corresponds to Packvium 1.2.0 in the other languages.
+> **Version 1.3.0.** This release corresponds to Packvium 1.3.0 in the other languages.
 > Field names, status codes and the objective vector stay the same for all of 1.x, so a
 > later 1.x release can replace any earlier one without code changes.
 
@@ -29,6 +30,7 @@ conformance corpus.
 - [Nested packing](#nested-packing)
 - [Commerce: quotes, policy and catalogs](#commerce-quotes-policy-and-catalogs)
 - [Execution plans](#execution-plans)
+- [Operational artifacts](#operational-artifacts)
 - [Operator locks](#operator-locks)
 - [Scenario comparison, recommendations and holdout replay](#scenario-comparison-recommendations-and-holdout-replay)
 - [Examples](#examples)
@@ -47,20 +49,20 @@ Maven:
 <dependency>
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.packvium:packvium:1.2.0")
+implementation("com.packvium:packvium:1.3.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.packvium:packvium:1.2.0'
+implementation 'com.packvium:packvium:1.3.0'
 ```
 
 The jar has no dependencies of its own.
@@ -296,6 +298,41 @@ String canonical = Plan.canonicalJson(plan);
 A result the adapter cannot describe, or a loading order that is not a permutation of the
 container's placements, throws `ExecutionPlanException`.
 
+## Operational artifacts
+
+An execution plan says what to lift first. A warehouse or transport system that has no engine
+of its own needs more: how big each box is, what the load weighs, a sheet to print for the
+dock, and a record of which request and solver produced it. The operational artifact is that
+one document. It embeds the request, wraps the plan unchanged, and adds tick geometry, the
+result's own display values and the solver's deterministic settings, and like the plan it
+calls no solver, renderer or clock.
+
+```java
+import com.packvium.artifacts.ArtifactExports;
+import com.packvium.artifacts.OperationalArtifact;
+import com.packvium.serialization.RequestPacker;
+import java.util.List;
+import java.util.Map;
+
+Map<String, Object> result = RequestPacker.pack(request);
+// The loading order comes from LoadingDependencyGraph.safeLoadingOrder; without one the
+// work order's steps are not numbered.
+Map<String, Object> artifact = OperationalArtifact.build(request, result, Map.of(0, List.of(1, 0)));
+String json = ArtifactExports.json(artifact);               // RFC 8785: the same bytes in every engine
+String csv = ArtifactExports.csv(artifact);                 // a row per step, then a row per unplaced item
+String workOrder = ArtifactExports.workOrderHtml(artifact); // one self-contained page, no script
+Object stored = OperationalArtifact.parse(json);            // a stored artifact exports the same bytes
+```
+
+`provenance.replay.level` is `exact` only when the result records how it was solved and the
+search finished inside its time limit; otherwise it is `not_guaranteed` and names the field
+that decided it. Anything an artifact cannot carry the same way in every engine is refused
+with an `OperationalArtifactException` whose `errorCode()` comes from a closed set:
+`invalid_request`, `invalid_result`, `invalid_plan_input`, `mixed_units`,
+`number_out_of_range` (a number beyond 2^53 - 1, which JavaScript cannot hold exactly),
+`invalid_string`, `invalid_value`, `unknown_format` and `invalid_json`. `Plan.canonicalJson`
+uses the same RFC 8785 spelling.
+
 ## Operator locks
 
 An operator standing at the dock can pin a box: *this item stays here*. A lock is read
@@ -445,11 +482,11 @@ the validator rejects and a refused self-citation.
 
 ## Examples
 
-The [`examples/`](examples) directory has ten runnable files. Each can be read from top to
+The [`examples/`](examples) directory has eleven runnable files. Each can be read from top to
 bottom and run with the JDK source launcher, with no project set up around it. The test
-suite (`ExamplesTest`) runs all ten and compares what each prints with what the reference
-example of the same name prints: the PHP one, except for `Execution.java` and
-`Intelligence.java`, whose reference is the Python one.
+suite (`ExamplesTest`) runs all eleven and compares what each prints with what the reference
+example of the same name prints: the PHP one, except for `Execution.java`,
+`Intelligence.java` and `Artifacts.java`, whose reference is the Python one.
 
 | File | What it shows |
 | --- | --- |
@@ -462,13 +499,14 @@ example of the same name prints: the PHP one, except for `Execution.java` and
 | [`Nested.java`](examples/Nested.java) | Units go into cartons and cartons go onto a pallet, in one call. |
 | [`Commerce.java`](examples/Commerce.java) | Rate a shipment, apply an eligibility rule and pin a catalog version. |
 | [`Execution.java`](examples/Execution.java) | Turn a result into a work order, then let an operator pin a box and see both ways a lock can fail. |
+| [`Artifacts.java`](examples/Artifacts.java) | Hand a result to a system with no engine: one document with geometry and provenance, exported as CSV, a printable work order and canonical JSON. |
 | [`Intelligence.java`](examples/Intelligence.java) | Prove a carton change is better before publishing it: per-order Pareto comparison, a withheld proposal, holdout replay. |
 
 Build the jar once, then run any example against it:
 
 ```bash
 mvn -q package -DskipTests
-java -cp target/packvium-1.2.0.jar examples/Objectives.java
+java -cp target/packvium-1.3.0.jar examples/Objectives.java
 ```
 
 ## Command line
@@ -479,7 +517,7 @@ and writes the result JSON to standard output:
 ```bash
 echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
        "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
-  | java -jar target/packvium-1.2.0.jar
+  | java -jar target/packvium-1.3.0.jar
 ```
 
 When a request is refused, the program exits with status 1 and prints the reason on
@@ -491,7 +529,7 @@ exits with status 2.
 - **Java 17 or newer.** The jar is compiled with `--release 17`, and continuous
   integration runs the full test suite on JDK 17, 21 and 25 on Linux, macOS and Windows.
 - **No runtime dependencies.** JUnit is a test-only dependency.
-- **Thread safety.** Requests, configurations, results and plans are immutable and can be
+- **Thread safety.** Requests, configurations, results, plans and artifacts are immutable and can be
   shared between threads. A `Packer` keeps no state between calls, your own extensions
   aside. The registries
   (`CatalogRegistry`, `PolicyRegistry`, `CarrierRegistry`) and `OutcomeLedger` are
@@ -504,7 +542,7 @@ draws from its own generator seeded by the request's `seed`, no hash order reach
 and the only effect of the clock is the time limit you set: a solve that hits it stops early and says so in its result.
 Give the limit generous headroom when you need an answer that does not depend on how busy
 the machine is; the examples use 60 seconds for that reason. Commerce, execution plans,
-scenario comparison and holdout replay read no clock at all.
+operational artifacts, scenario comparison and holdout replay read no clock at all.
 
 Lengths are counted in ticks of 1/16000 mm and weights in ticks of 1/8 µg. Coordinates
 are never floating-point numbers, so rounding cannot change where an item is placed.
@@ -527,8 +565,8 @@ any engine yet. A request that sets it is refused with `unsupported_feature`.
 
 ## Versioning
 
-The Java port follows the Packvium release history one version at a time: Java 1.2.0
-answers what every other Packvium 1.2.0 answers. A version is released only once the port
+The Java port follows the Packvium release history one version at a time: Java 1.3.0
+answers what every other Packvium 1.3.0 answers. A version is released only once the port
 passes that version's shared conformance corpus. Within 1.x, the request and result
 formats, status codes and objective vector stay compatible; what changed in each release
 is in the [changelog](CHANGELOG.md).

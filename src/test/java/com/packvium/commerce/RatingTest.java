@@ -1,6 +1,7 @@
 package com.packvium.commerce;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,6 +10,7 @@ import com.packvium.commerce.rating.AccessorialCharge;
 import com.packvium.commerce.rating.CarrierRegistry;
 import com.packvium.commerce.rating.RateBreakdown;
 import com.packvium.commerce.rating.RatingRequest;
+import com.packvium.commerce.rating.Tariff;
 import com.packvium.commerce.rating.TariffNotFoundException;
 import com.packvium.commerce.rating.UnavailableServiceException;
 import java.util.LinkedHashMap;
@@ -52,6 +54,20 @@ class RatingTest {
         TariffNotFoundException early = assertThrows(
                 TariffNotFoundException.class, () -> carriers.effectiveTariff("a", "g", 9));
         assertEquals("a/g has no tariff version effective as of 9", early.getMessage());
+    }
+
+    @Test
+    void aPinnedTariffIsReadByItsPosition() {
+        CarrierRegistry carriers = new CarrierRegistry();
+        Tariff first = carriers.publish("a", "g", 10, 1000, Map.of("z", 100L));
+        Tariff second = carriers.publish("a", "g", 20, 1000, Map.of("z", 200L));
+        assertSame(first, carriers.tariff("a", "g", 1));
+        assertSame(second, carriers.tariff("a", "g", 2));
+        for (long missing : new long[] {0, -1, 3, Long.MAX_VALUE, Long.MIN_VALUE}) {
+            TariffNotFoundException error = assertThrows(TariffNotFoundException.class,
+                    () -> carriers.tariff("a", "g", missing));
+            assertEquals("a/g has no version " + missing, error.getMessage());
+        }
     }
 
     @Test

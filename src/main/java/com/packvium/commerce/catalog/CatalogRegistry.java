@@ -6,7 +6,8 @@ import java.util.Optional;
 
 /**
  * Per-catalog append-only publication history: the one place catalog state can change,
- * and it can only ever append. Complexity: publish O(1), resolve O(h) over the history.
+ * and it can only ever append. Complexity: publish O(1), a pinned version O(1), resolving by
+ * instant O(h) over the history.
  */
 public final class CatalogRegistry {
     private final String catalogId;
@@ -104,11 +105,10 @@ public final class CatalogRegistry {
         return winner;
     }
 
+    /** O(1): version n is always the n-th published, so it is read by position, not searched for. */
     public Version version(long number) {
-        for (Version version : versions) {
-            if (version.number() == number) {
-                return version;
-            }
+        if (number >= 1 && number <= versions.size()) {
+            return versions.get((int) (number - 1));
         }
         throw new VersionNotFoundException("catalog '" + catalogId + "' has no version " + number);
     }

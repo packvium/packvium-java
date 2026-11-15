@@ -4,6 +4,44 @@ What changed in `com.packvium:packvium` on Maven Central, release by release. Th
 follows [Keep a Changelog](https://keepachangelog.com/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0]
+
+Answers every request the way Packvium 1.3.0 does in the other languages, checked byte for
+byte against the 1.3.0 conformance corpus.
+
+### Added
+
+- Operational artifacts: `com.packvium.artifacts.OperationalArtifact.build(request, result,
+  loadingOrders)` wraps the execution plan unchanged in one document a warehouse or
+  transport system can act on without an engine: the request itself, the catalog versions
+  and the solver's deterministic settings, tick geometry for every placement, and a work
+  order that copies the result's own display values. `provenance.replay` says `exact` only
+  when the search finished inside its time limit. `fromJson` and `parse` read JSON text.
+- Exports: `ArtifactExports.json` (the canonical form), `csv` (RFC 4180, a row per step and
+  per unplaced item) and `workOrderHtml` (one self-contained page to print, no script or
+  external resource). The bytes are the same in every engine. A document the builder or an
+  exporter cannot carry the same way everywhere throws `OperationalArtifactException`, whose
+  `errorCode()` comes from a closed set.
+- `com.packvium.support.CanonicalJson`, the RFC 8785 writer behind both, and an
+  `examples/Artifacts.java` example.
+
+### Changed
+
+- `Plan.canonicalJson` is RFC 8785, shared with the artifact. Every plan the 1.2.0 corpus
+  produces keeps its bytes; a plan holding a float or a key outside the Basic Multilingual
+  Plane now matches the other engines, and a number beyond 2^53 - 1 is refused.
+- Floats are written with their shortest round-trip digits on every supported JDK. The
+  1.2.0 spelling could write 17 digits where 16 suffice, for a few doubles just above a power
+  of two.
+- The execution plan carries a score as the result holds it, as the Python adapter does,
+  instead of casting each entry to an integer. A fractional score is no longer truncated: the
+  work order refuses it as `invalid_value`, and comparing it with an alternative's score is
+  refused. A position tick is read as Python's `int()` reads it, so `true` is 1 and `" 7 "` is
+  7. Every plan the corpus produces keeps its bytes.
+- A pinned catalog version and a pinned tariff version are found by position instead of by
+  scanning the history, and a two-axis Pareto report sorts once instead of comparing every
+  pair of candidates. Results are unchanged.
+
 ## [1.2.0]
 
 Answers every request the way Packvium 1.2.0 does in the other languages, checked byte for

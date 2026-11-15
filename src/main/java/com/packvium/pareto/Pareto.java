@@ -69,8 +69,9 @@ public final class Pareto {
 
     /**
      * One {@link ProfileReport} per distinct profile among {@code candidates}, in code-point
-     * order of the profile name. O(p · c² · k) for p profiles of at most c candidates and k axes:
-     * every candidate is tested against every other in its profile.
+     * order of the profile name. For p profiles of at most c candidates and k axes: O(p · c log c)
+     * with two axes, by a sweep; O(p · c² · k) otherwise, and for input the sweep cannot read (a
+     * missing axis or an absent value), where every candidate is tested against every other.
      *
      * @param higherIsBetter the direction of every compared axis; guessing one wrong (runtime as
      *     "higher is better") would silently invert the whole report, so there is no default
@@ -107,22 +108,157 @@ public final class Pareto {
 
     private static ProfileReport frontier(String profile, List<CandidateResult> group,
             Map<String, Boolean> higherIsBetter) {
+        boolean[] isOptimal = comparable(group, higherIsBetter)
+                ? vectorFrontier(vectors(group, higherIsBetter))
+                : pairwiseFrontier(group, higherIsBetter);
         List<String> optimal = new ArrayList<>();
         List<String> dominated = new ArrayList<>();
-        for (CandidateResult candidate : group) {
-            boolean isDominated = false;
-            for (CandidateResult other : group) {
-                if (other != candidate && dominates(other.metrics(), candidate.metrics(), higherIsBetter)) {
-                    isDominated = true;
-                    break;
-                }
-            }
-            (isDominated ? dominated : optimal).add(candidate.engine());
+        for (int index = 0; index < group.size(); index++) {
+            (isOptimal[index] ? optimal : dominated).add(group.get(index).engine());
         }
         optimal.sort(SortKey::compareCodePoints);
         dominated.sort(SortKey::compareCodePoints);
         Optional<String> winner = optimal.size() == 1 ? Optional.of(optimal.get(0)) : Optional.empty();
         return new ProfileReport(profile, optimal, dominated, winner);
+    }
+
+    /**
+     * Every candidate tested against every other through {@link #dominates}, O(c² · k). The
+     * path for input the vector path cannot read, so its refusals keep their historical order:
+     * a missing axis or an absent value is reported exactly as before.
+     */
+    static boolean[] pairwiseFrontier(List<CandidateResult> group, Map<String, Boolean> higherIsBetter) {
+        boolean[] optimal = new boolean[group.size()];
+        for (int index = 0; index < group.size(); index++) {
+            CandidateResult candidate = group.get(index);
+            optimal[index] = true;
+            for (CandidateResult other : group) {
+                if (other != candidate && dominates(other.metrics(), candidate.metrics(), higherIsBetter)) {
+                    optimal[index] = false;
+                    break;
+                }
+            }
+        }
+        return optimal;
+    }
+
+    /**
+     * Whether the vector path may answer, as the reference decides it: at least two candidates,
+     * each with a value on every compared axis and no absent value anywhere. {@code NaN} cannot
+     * reach here; {@link CandidateResult} refuses it.
+     */
+    private static boolean comparable(List<CandidateResult> group, Map<String, Boolean> higherIsBetter) {
+        if (group.size() < 2) {
+            return false;
+        }
+        for (CandidateResult candidate : group) {
+            if (!candidate.metrics().keySet().containsAll(higherIsBetter.keySet())
+                    || candidate.metrics().containsValue(null)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Each candidate's compared axes, negated where higher is better, so lower is better on every one. */
+    private static double[][] vectors(List<CandidateResult> group, Map<String, Boolean> higherIsBetter) {
+        double[][] vectors = new double[group.size()][];
+        for (int index = 0; index < group.size(); index++) {
+            Map<String, Double> metrics = group.get(index).metrics();
+            double[] vector = new double[higherIsBetter.size()];
+            int axis = 0;
+            for (Map.Entry<String, Boolean> direction : higherIsBetter.entrySet()) {
+                double value = metrics.get(direction.getKey());
+                vector[axis++] = direction.getValue() ? -value : value;
+            }
+            vectors[index] = vector;
+        }
+        return vectors;
+    }
+
+    /**
+     * The same sets {@link #pairwiseFrontier} finds, from minimisation vectors: a candidate is
+     * optimal unless a different vector is no greater on every axis. Two axes take the sweep,
+     * O(c log c); any other count compares vectors directly, O(c² · k), without the per-pair map
+     * lookups and checks of {@link #dominates}.
+     */
+    static boolean[] vectorFrontier(double[][] vectors) {
+        if (vectors.length > 0 && vectors[0].length == 2) {
+            return twoAxisFrontier(vectors);
+        }
+        boolean[] optimal = new boolean[vectors.length];
+        for (int index = 0; index < vectors.length; index++) {
+            optimal[index] = true;
+            for (double[] other : vectors) {
+                if (!sameVector(other, vectors[index]) && noGreater(other, vectors[index])) {
+                    optimal[index] = false;
+                    break;
+                }
+            }
+        }
+        return optimal;
+    }
+
+    /**
+     * Sorted by (x, y), one pass keeps the running least y. A run of equal x survives only at its
+     * least y, and only if that y is below every y seen at a smaller x; equal vectors survive
+     * together, since neither dominates the other. Comparisons are on primitive values, so
+     * {@code -0.0} equals {@code 0.0} as it does in the reference. O(c log c).
+     */
+    private static boolean[] twoAxisFrontier(double[][] vectors) {
+        List<Integer> ordered = new ArrayList<>(vectors.length);
+        for (int index = 0; index < vectors.length; index++) {
+            ordered.add(index);
+        }
+        ordered.sort((left, right) -> {
+            int byX = compare(vectors[left][0], vectors[right][0]);
+            return byX != 0 ? byX : compare(vectors[left][1], vectors[right][1]);
+        });
+        boolean[] optimal = new boolean[vectors.length];
+        boolean seen = false;
+        double bestY = 0;
+        int position = 0;
+        while (position < ordered.size()) {
+            double x = vectors[ordered.get(position)][0];
+            double y = vectors[ordered.get(position)][1];
+            boolean survives = !seen || y < bestY;
+            int end = position;
+            while (end < ordered.size() && vectors[ordered.get(end)][0] == x) {
+                int index = ordered.get(end);
+                if (survives && vectors[index][1] == y) {
+                    optimal[index] = true;
+                }
+                end++;
+            }
+            if (survives) {
+                bestY = y;
+                seen = true;
+            }
+            position = end;
+        }
+        return optimal;
+    }
+
+    private static int compare(double left, double right) {
+        return left < right ? -1 : left > right ? 1 : 0;
+    }
+
+    private static boolean sameVector(double[] left, double[] right) {
+        for (int axis = 0; axis < left.length; axis++) {
+            if (left[axis] != right[axis]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean noGreater(double[] left, double[] right) {
+        for (int axis = 0; axis < left.length; axis++) {
+            if (left[axis] > right[axis]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

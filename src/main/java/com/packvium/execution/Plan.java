@@ -1,5 +1,6 @@
 package com.packvium.execution;
 
+import com.packvium.support.CanonicalJson;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -106,7 +107,7 @@ public final class Plan {
             throw new ExecutionPlanException("a result without a status is not a validated result");
         }
         List<?> containers = list(result.get("containers"), "containers");
-        List<Object> winnerScore = integers(result.get("score"), "score");
+        List<Object> winnerScore = copied(result.get("score"), "score");
 
         List<Object> planContainers = new ArrayList<>(containers.size());
         for (int index = 0; index < containers.size(); index++) {
@@ -156,15 +157,19 @@ public final class Plan {
     }
 
     /**
-     * The one byte-comparable spelling of a plan: Python's {@code json.dumps(plan,
-     * sort_keys=True, separators=(",", ":"), ensure_ascii=False)}.
+     * The one byte-comparable spelling of a plan: RFC 8785, shared with the operational artifact
+     * and held to {@code packvium.execution.canonical_plan_json}.
      *
      * <p>Cross-language equality is asserted on this string rather than on a parsed tree, so
-     * key order and whitespace cannot make two identical plans look different. O(n log n) in
-     * the plan's size, for the key sorts.
+     * key order and whitespace cannot make two identical plans look different. Until 1.3.0 this
+     * was Python's {@code json.dumps(sort_keys=True)}: the same bytes for every plan the corpus
+     * produces, but not for a key outside the Basic Multilingual Plane or a float, where the
+     * four adapters disagreed. O(N + K log K), as {@link CanonicalJson#encode} is.
+     *
+     * @throws com.packvium.support.CanonicalJsonException when a value has no canonical spelling
      */
     public static String canonicalJson(Map<String, ?> plan) {
-        return CanonicalPlanJson.encode(plan);
+        return CanonicalJson.encode(plan);
     }
 
     /**
@@ -233,7 +238,7 @@ public final class Plan {
     }
 
     private static Map<String, Object> alternative(int index, List<Object> winnerScore, Map<?, ?> alternative) {
-        List<Object> score = integers(alternative.get("score"), "alternatives[].score");
+        List<Object> score = copied(alternative.get("score"), "alternatives[].score");
         Map<String, Object> difference = firstDifference(winnerScore, score);
         String summary = difference == null
                 ? "This option scored identically to the chosen one on every objective axis; "
@@ -270,14 +275,14 @@ public final class Plan {
     private static Map<String, Object> firstDifference(List<Object> winner, List<Object> loser) {
         int shared = Math.min(winner.size(), loser.size());
         for (int index = 0; index < shared; index++) {
-            long chosen = (Long) winner.get(index);
-            long other = (Long) loser.get(index);
-            if (chosen != other) {
+            BigInteger chosen = scoreEntry(winner.get(index));
+            BigInteger other = scoreEntry(loser.get(index));
+            if (!chosen.equals(other)) {
                 Map<String, Object> difference = new LinkedHashMap<>();
                 difference.put("index", (long) index);
-                difference.put("winner", chosen);
-                difference.put("alternative", other);
-                difference.put("difference", exact(BigInteger.valueOf(other).subtract(BigInteger.valueOf(chosen))));
+                difference.put("winner", winner.get(index));
+                difference.put("alternative", loser.get(index));
+                difference.put("difference", exact(other.subtract(chosen)));
                 return Collections.unmodifiableMap(difference);
             }
         }
@@ -287,31 +292,63 @@ public final class Plan {
         return null;
     }
 
-    /** A score vector with every entry cast to an integer, as the reference casts it. */
-    private static List<Object> integers(Object value, String field) {
+    /**
+     * A score vector carried through as the result holds it, as Python's adapter copies it. A
+     * fraction is not cast to an integer here: the artifact's work order refuses it by name
+     * ({@code invalid_value}), where a cast would silently print a different score.
+     */
+    private static List<Object> copied(Object value, String field) {
         List<Object> out = new ArrayList<>();
         for (Object element : list(value, field)) {
-            out.add(integer(element));
+            out.add(frozen(element));
         }
         return Collections.unmodifiableList(out);
     }
 
     /**
-     * The reference's integer cast of a decoded JSON number: a fraction truncates toward zero.
-     * A value past 64 bits is refused rather than wrapped, as everywhere else in this port.
+     * One score component compared lexicographically: an exact integer and nothing else, since
+     * a difference between two scores is only defined for the integers a solver records.
+     */
+    private static BigInteger scoreEntry(Object value) {
+        if (value instanceof Long || value instanceof Integer) {
+            return BigInteger.valueOf(((Number) value).longValue());
+        }
+        if (value instanceof BigInteger big) {
+            return big;
+        }
+        throw new ExecutionPlanException("a score component is " + describe(value) + ", not an integer");
+    }
+
+    /**
+     * Python's {@code int()} of a tick count: an integer as it is, a fraction truncated toward
+     * zero, a boolean as 0 or 1 and a whole-number string parsed. A value past 64 bits is
+     * refused rather than wrapped, as everywhere else in this port.
      */
     private static long integer(Object value) {
-        BigInteger whole;
         if (value instanceof Long || value instanceof Integer) {
             return ((Number) value).longValue();
-        } else if (value instanceof BigInteger big) {
-            whole = big;
-        } else if (value instanceof BigDecimal decimal) {
-            whole = decimal.toBigInteger();
-        } else {
-            throw new ExecutionPlanException("expected an integer, got " + describe(value));
         }
-        return exact(whole);
+        if (value instanceof Boolean flag) {
+            return flag ? 1 : 0;
+        }
+        if (value instanceof BigInteger big) {
+            return exact(big);
+        }
+        if (value instanceof BigDecimal decimal) {
+            return exact(decimal.toBigInteger());
+        }
+        if (value instanceof String text) {
+            return exact(parsedInteger(text));
+        }
+        throw new ExecutionPlanException("expected an integer, got " + describe(value));
+    }
+
+    private static BigInteger parsedInteger(String text) {
+        try {
+            return new BigInteger(text.strip());
+        } catch (NumberFormatException refused) {
+            throw new ExecutionPlanException("invalid literal for int() with base 10: '" + text + "'", refused);
+        }
     }
 
     private static long exact(BigInteger value) {
@@ -321,15 +358,28 @@ public final class Plan {
         return value.longValue();
     }
 
-    /** A missing or null field is an empty list, as {@code ?? []} reads it. */
+    /**
+     * A JSON array as a list, and an absent one as empty. The reference reads these fields as
+     * {@code list(value or ())}, so the other empty values -- {@code {}}, {@code ""}, {@code 0},
+     * {@code false} -- are empty too, as PHP's {@code Plan::sequence} has read them since 1.3.0;
+     * any other non-list has no entries to describe.
+     */
     private static List<?> list(Object value, String field) {
-        if (value == null) {
-            return List.of();
-        }
         if (value instanceof List<?> elements) {
             return elements;
         }
+        if (isEmptyValue(value)) {
+            return List.of();
+        }
         throw new ExecutionPlanException("'" + field + "' must be a list, got " + describe(value));
+    }
+
+    private static boolean isEmptyValue(Object value) {
+        return value == null || Boolean.FALSE.equals(value) || "".equals(value)
+                || (value instanceof Map<?, ?> members && members.isEmpty())
+                || (value instanceof Long number && number == 0) || (value instanceof Integer number && number == 0)
+                || (value instanceof BigInteger number && number.signum() == 0)
+                || (value instanceof BigDecimal number && number.signum() == 0);
     }
 
     private static Map<?, ?> map(Object value, String field) {

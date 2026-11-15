@@ -1,6 +1,7 @@
 package com.packvium.commerce;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.packvium.commerce.catalog.AmbiguousReferenceException;
@@ -59,6 +60,21 @@ class CatalogTest {
         assertEquals("catalog 'c' has 2 versions; resolving requires an explicit version or as_of",
                 ambiguous.getMessage());
         assertThrows(VersionNotFoundException.class, () -> registry.version(3));
+    }
+
+    @Test
+    void aPinnedVersionIsReadByItsPosition() {
+        CatalogRegistry registry = new CatalogRegistry("c");
+        Version first = registry.publish(items("a"), 0, 0);
+        Version second = registry.publish(items("b"), 5, 5);
+        Version rollback = registry.rollback(1, 9);
+        assertSame(first, registry.version(1));
+        assertSame(second, registry.version(2));
+        assertSame(rollback, registry.version(3));
+        for (long missing : new long[] {0, -1, 4, Long.MAX_VALUE, Long.MIN_VALUE}) {
+            VersionNotFoundException error = assertThrows(VersionNotFoundException.class, () -> registry.version(missing));
+            assertEquals("catalog 'c' has no version " + missing, error.getMessage());
+        }
     }
 
     @Test

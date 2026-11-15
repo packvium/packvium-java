@@ -171,6 +171,54 @@ class PlanTest {
         assertTrue(error.getMessage().contains("different length"));
     }
 
+    /** Python copies a score as the result holds it; a fraction is never truncated into another score. */
+    @Test
+    void aScoreIsCarriedThroughUnchanged() {
+        List<Object> fractional = List.of(new BigDecimal("1.5"), 0L);
+        Map<String, Object> facts = at(Plan.build(Map.of(), result(Map.of("score", fractional))), "facts");
+        assertEquals(fractional, facts.get("score"));
+        assertTrue(Plan.canonicalJson(Plan.build(Map.of(), result(Map.of("score", fractional))))
+                .contains("\"score\":[1.5,0]"));
+    }
+
+    /** Two scores are compared only as the integers a solver records. */
+    @Test
+    void aScoreComparedWithAnAlternativeMustBeIntegral() {
+        Map<String, Object> result = result(Map.of("score", List.of(new BigDecimal("1.5")),
+                "alternatives", List.of(Map.of("score", List.of(2L)))));
+        ExecutionPlanException error = assertThrows(ExecutionPlanException.class,
+                () -> Plan.build(Map.of(), result));
+        assertTrue(error.getMessage().contains("not an integer"));
+    }
+
+    /** Ticks are read as Python's {@code int()} reads them: a boolean is 0 or 1, a whole-number string parses. */
+    @Test
+    void aTickIsReadAsPythonsIntReadsIt() {
+        Map<String, Object> odd = placement("cube", 0, 0, 0);
+        odd.put("position", Map.of("x", Map.of("ticks", true), "y", Map.of("ticks", " 7 "),
+                "z", Map.of("ticks", new BigDecimal("2.9"))));
+        Map<String, Object> ticks = at(Plan.build(Map.of(), result(Map.of("containers", List.of(Map.of(
+                "container_type", "box", "placements", List.of(odd)))))),
+                "containers", 0, "steps", 0, "placement", "position_ticks");
+        assertEquals(Map.of("x", 1L, "y", 7L, "z", 2L), ticks);
+        odd.put("position", Map.of("x", Map.of("ticks", "seven"), "y", Map.of("ticks", 0L), "z", Map.of("ticks", 0L)));
+        assertThrows(ExecutionPlanException.class, () -> Plan.build(Map.of(), result(Map.of("containers",
+                List.of(Map.of("container_type", "box", "placements", List.of(odd)))))));
+    }
+
+    @Test
+    void anEmptyValueWhereAListBelongsHasNoEntries() {
+        // The reference's `list(value or ())`: {}, "", 0 and false describe nothing, as null does.
+        for (Object empty : List.of(Map.of(), "", 0L, false, new BigDecimal("0.0"))) {
+            Map<String, Object> plan = Plan.build(Map.of(), result(Map.of("alternatives", empty, "unpacked_items", empty)));
+            assertEquals(List.of(), plan.get("alternatives"));
+            assertEquals(List.of(), plan.get("unplaced"));
+        }
+        ExecutionPlanException error = assertThrows(ExecutionPlanException.class,
+                () -> Plan.build(Map.of(), result(Map.of("alternatives", Map.of("a", 1L)))));
+        assertTrue(error.getMessage().contains("must be a list"));
+    }
+
     @Test
     void aResultWithNoAlternativesIsWellFormed() {
         Map<String, Object> plan = Plan.build(Map.of(), result());
@@ -224,18 +272,19 @@ class PlanTest {
     }
 
     @Test
-    void canonicalJsonIsPythonsSpelling() {
-        // Expected strings are Python's json.dumps(value, sort_keys=True, separators=(",", ":"),
-        // ensure_ascii=False): non-ASCII and U+2028 raw, \b and \f short, other controls as
-        // lower-case \\u escapes, an empty object as {}, a "0"-keyed object still an object.
+    void canonicalJsonIsRfc8785() {
+        // Expected string from canonical_plan_json at v1.3.0, which is RFC 8785 since then:
+        // non-ASCII raw, \b and \f short, other controls as lower-case escapes, an empty
+        // object as {}, a "0"-keyed object still an object, and numbers as ECMAScript writes
+        // them -- 100.0 is 100, where 1.2's json.dumps spelling wrote 100.0.
         Map<String, Object> value = new LinkedHashMap<>();
-        value.put("é", "ü \u007f\b\f\u0001\"\\/");
+        value.put("\u00e9", "\u00fc \u007f\b\f\u0001\"\\/");
         value.put("b", Map.of());
         value.put("a", Map.of("0", 1L));
-        value.put("😀", List.of(new BigDecimal("0.5"), new BigDecimal("1e16"), new BigDecimal("0.00001"),
-                new BigDecimal("1E2"), new BigDecimal("123.456")));
-        assertEquals("{\"a\":{\"0\":1},\"b\":{},\"é\":\"ü \u007f\\b\\f\\u0001\\\"\\\\/\","
-                + "\"😀\":[0.5,1e+16,1e-05,100.0,123.456]}", CanonicalPlanJson.encode(value));
+        value.put("\ud83d\ude00", List.of(new BigDecimal("0.5"), new BigDecimal("1e15"), new BigDecimal("0.00001"),
+                new BigDecimal("1E2"), new BigDecimal("123.456"), new BigDecimal("1e-7")));
+        assertEquals("{\"a\":{\"0\":1},\"b\":{},\"\u00e9\":\"\u00fc \u007f\\b\\f\\u0001\\\"\\\\/\","
+                + "\"\ud83d\ude00\":[0.5,1000000000000000,0.00001,100,123.456,1e-7]}", Plan.canonicalJson(value));
     }
 
     @Test
