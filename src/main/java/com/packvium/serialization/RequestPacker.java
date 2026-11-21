@@ -3,7 +3,6 @@ package com.packvium.serialization;
 import com.packvium.Packer;
 import com.packvium.constraint.PlacementConstraint;
 import com.packvium.extension.ExtensionRegistry;
-import com.packvium.policy.PolicyRuleSet;
 import com.packvium.result.PackingResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,14 +35,12 @@ public final class RequestPacker {
      */
     public static Map<String, Object> pack(Object rawRequest, ExtensionRegistry extensions) {
         DecodedRequest request = new RequestDecoder(UnsupportedFields.CURRENT).decode(rawRequest);
-        // Rules compile into the constraint pipeline rather than post-filtering a chosen answer: an
-        // illegal candidate is rejected during search, so the winner was never illegal.
-        List<PlacementConstraint> constraints = new ArrayList<>(
-                PolicyRuleSet.fromArray(request.policy().orElse(null)).constraints());
+        List<PlacementConstraint> constraints = new ArrayList<>(request.policyConstraints());
         constraints.addAll(extensions.placementConstraints());
         ExtensionRegistry combined = new ExtensionRegistry(constraints, extensions.itemOrderStrategies(),
                 extensions.solvers(), extensions.candidateScorer(), extensions.containerSelector());
-        PackingResult result = new Packer(request.config(), combined).pack(request.items(), request.containers());
+        PackingResult result = new Packer(request.config(), combined).pack(request.items(), request.containers(),
+                request.fixedPlacements());
         Map<String, Object> encoded = new LinkedHashMap<>(
                 new ResultEncoder(request.outputLengthUnit(), request.outputWeightUnit()).encode(result));
         encoded.put("catalog_versions_used", request.catalogVersionsUsed());

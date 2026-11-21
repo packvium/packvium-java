@@ -53,23 +53,71 @@ final class ContainerPlanner {
                 .mapToLong(container -> container.quantity().orElse((long) items.size())).sum());
     }
 
-    /** Greedy rounds: each round packs every container type and commits the best one. O(rounds * c * S). */
-    Outcome greedy(SingleContainerSolver solver, List<ItemInstance> items, List<Container> containers,
-            PackingConfig config, SearchStats stats, Deadline deadline) {
-        List<ItemInstance> remaining = items;
+    /**
+     * The plan every start continues from: each container holding fixed items, filled first and
+     * kept whatever it gets.
+     *
+     * <p>A container that search cannot fill -- the deadline has passed, or the solver raised it --
+     * is kept with its fixed items alone: dropping it would drop items the request says are already
+     * loaded. O(k * S) for k fixed containers and S one {@code packOne}.
+     */
+    static Opened openPreloaded(SingleContainerSolver solver, List<PackedContainer> preloaded,
+            List<ItemInstance> items, List<Container> containers, PackingConfig config, SearchStats stats,
+            Deadline deadline) {
         List<PackedContainer> packed = new ArrayList<>();
-        boolean reached = false;
-        boolean exhaustive = true;
-        boolean dominantLattice = true;
-        Map<String, Long> inventory = new HashMap<>();
-        Map<String, Long> sequence = new HashMap<>();
+        List<ItemInstance> remaining = items;
+        Map<String, Long> inventory = new LinkedHashMap<>();
+        Map<String, Long> sequences = new LinkedHashMap<>();
         for (Container container : containers) {
             inventory.put(container.id(), container.quantity().orElse(null));
-            sequence.put(container.id(), 0L);
+            sequences.put(container.id(), 0L);
         }
+        boolean exhaustive = true;
+        boolean dominant = true;
+        boolean reached = false;
+        for (PackedContainer fixed : preloaded) {
+            Container seeded = fixed.container().withPreloaded(fixed.placements());
+            SingleContainerSolution one = null;
+            if (!reached && !deadline.expired()) {
+                try {
+                    one = solver.packOne(seeded, fixed.sequence(), remaining, config, stats, deadline);
+                } catch (TimeLimitReached cut) {
+                    one = null;
+                }
+            }
+            if (one == null || one.timeLimitReached()) {
+                reached = true;
+            }
+            Committed committed = commit(one == null ? new ContainerState(seeded, fixed.sequence()) : one.state());
+            packed.add(committed.packed());
+            remaining = remaining.stream().filter(item -> !committed.ids().contains(item.id())).toList();
+            if (inventory.get(seeded.id()) != null) {
+                inventory.merge(seeded.id(), -1L, Long::sum);
+            }
+            sequences.put(seeded.id(), fixed.sequence());
+            exhaustive = exhaustive && one != null && one.exhaustive();
+            dominant = dominant && one != null && one.dominantLattice();
+        }
+        return new Opened(new Plan(packed, remaining, inventory, sequences, exhaustive, dominant), reached);
+    }
+
+    /** Where a start's search begins, and whether opening the fixed containers already hit a limit. */
+    record Opened(Plan plan, boolean reached) {
+    }
+
+    /** Greedy rounds: each round packs every container type and commits the best one. O(rounds * c * S). */
+    Outcome greedy(SingleContainerSolver solver, List<ItemInstance> items, List<Container> containers,
+            PackingConfig config, SearchStats stats, Deadline deadline, Opened opened) {
+        List<ItemInstance> remaining = opened.plan().remaining();
+        List<PackedContainer> packed = new ArrayList<>(opened.plan().packed());
+        boolean reached = opened.reached();
+        boolean exhaustive = opened.plan().exhaustive();
+        boolean dominantLattice = opened.plan().dominant();
+        Map<String, Long> inventory = new HashMap<>(opened.plan().inventory());
+        Map<String, Long> sequence = new HashMap<>(opened.plan().sequences());
         long maximum = maximumContainers(containers, items, config);
         List<Container> ordered = ordered(containers);
-        while (!remaining.isEmpty() && packed.size() < maximum) {
+        while (!remaining.isEmpty() && packed.size() < maximum && !reached) {
             if (deadline.expired()) {
                 reached = true;
                 break;
@@ -154,14 +202,20 @@ final class ContainerPlanner {
 
     static Committed commit(ContainerState state) {
         Set<String> ids = new HashSet<>();
+        // A result carries the request's container, not the seeded instance: anything that
+        // rebuilds a state from a packed container re-adds every placement itself, and a seeded
+        // container would add the fixed ones twice.
+        Container container = state.container.preloaded().isEmpty()
+                ? state.container
+                : state.container.withPreloaded(List.of());
         if (state.latticeSummary != null) {
             state.latticeItems.forEach(item -> ids.add(item.id()));
-            return new Committed(new PackedContainer(state.container, state.sequence, List.of(),
+            return new Committed(new PackedContainer(container, state.sequence, List.of(),
                     Optional.of(state.latticeSummary), state.latticeItems), ids);
         }
         state.placements.forEach(placement -> ids.add(placement.instance().id()));
         List<Placement> withLoads = TopLoadAssigner.assign(state.placements);
-        return new Committed(new PackedContainer(state.container, state.sequence, withLoads, Optional.empty(),
+        return new Committed(new PackedContainer(container, state.sequence, withLoads, Optional.empty(),
                 List.of()), ids);
     }
 
@@ -174,9 +228,13 @@ final class ContainerPlanner {
         return unpacked;
     }
 
-    /** A partial container plan in the beam; inventory null means unlimited. */
-    private record Plan(List<PackedContainer> packed, List<ItemInstance> remaining, Map<String, Long> inventory,
-            long sequence, boolean exhaustive, boolean dominant) {
+    /**
+     * A partial container plan in the beam; inventory null means unlimited. Containers are
+     * numbered per type, as the greedy path and every other engine number them: a fixed placement
+     * names {@code <type>#<n>}, so the count must be the type's own.
+     */
+    record Plan(List<PackedContainer> packed, List<ItemInstance> remaining, Map<String, Long> inventory,
+            Map<String, Long> sequences, boolean exhaustive, boolean dominant) {
     }
 
     /**
@@ -185,14 +243,12 @@ final class ContainerPlanner {
      * bound. O(levels * width * c * S) with the node limit as a hard cap.
      */
     Outcome plans(SingleContainerSolver solver, List<ItemInstance> items, List<Container> containers,
-            PackingConfig config, SearchStats stats, Deadline deadline) {
-        Map<String, Long> inventory = new LinkedHashMap<>();
-        containers.forEach(container -> inventory.put(container.id(), container.quantity().orElse(null)));
-        Plan initial = new Plan(List.of(), items, inventory, 0, true, true);
-        List<Plan> beam = List.of(initial);
+            PackingConfig config, SearchStats stats, Deadline deadline, Opened opened) {
+        Plan initial = opened.plan();
+        boolean reached = opened.reached();
+        List<Plan> beam = reached ? List.of() : List.of(initial);
         Plan incumbent = initial;
         long nodes = 0;
-        boolean reached = false;
         long maximum = maximumContainers(containers, items, config);
         List<Container> ordered = ordered(containers);
         while (!beam.isEmpty() && nodes < config.containerPlanNodeLimit()) {
@@ -219,7 +275,8 @@ final class ContainerPlanner {
                     nodes++;
                     SingleContainerSolution one;
                     try {
-                        one = solver.packOne(container, plan.sequence() + 1, plan.remaining(), config, stats, deadline);
+                        one = solver.packOne(container, plan.sequences().get(container.id()) + 1, plan.remaining(),
+                                config, stats, deadline);
                     } catch (TimeLimitReached cut) {
                         reached = true;
                         break;
@@ -261,7 +318,9 @@ final class ContainerPlanner {
         if (inventory.get(container.id()) != null) {
             inventory.merge(container.id(), -1L, Long::sum);
         }
-        return new Plan(packed, remaining, inventory, plan.sequence() + 1, plan.exhaustive() && one.exhaustive(),
+        Map<String, Long> sequences = new LinkedHashMap<>(plan.sequences());
+        sequences.merge(container.id(), 1L, Long::sum);
+        return new Plan(packed, remaining, inventory, sequences, plan.exhaustive() && one.exhaustive(),
                 plan.dominant() && one.dominantLattice());
     }
 

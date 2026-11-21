@@ -4,6 +4,55 @@ What changed in `com.packvium:packvium` on Maven Central, release by release. Th
 follows [Keep a Changelog](https://keepachangelog.com/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0]
+
+Answers every request the way Packvium 1.4.0 does in the other languages, checked byte for
+byte against the 1.4.0 conformance corpus.
+
+### Added
+
+- Fixed placements: a request's `fixed_placements` (and `Packer.pack(items, containers,
+  fixedPlacements)`) names items already in a known place by container type, instance and
+  origin. They take the first instances of their type, their containers open first and are
+  kept, and the solve packs around them with their weight, support and top load counted.
+  They come back with `"fixed": true`, and the independent validator refuses an answer that
+  drops, moves or invents one. A set that is not the schema's shape or cannot hold on its own
+  is refused before any search with `FixedPlacementException` (`invalid_fixed_placement`).
+- Structured request errors: `InvalidRequestException`, an `IllegalArgumentException` with
+  `errorCode()` `invalid_request`, a `reason()` from a closed set and the RFC 6901 `field()`
+  of the bad value, and the message every engine prints, such as
+  `invalid_request: /items/0/quantity: must be at least 1`.
+- Plan revisions: `com.packvium.revisions.PlanRevision` builds `packvium-plan-revision/v1`
+  documents (`root`, `derive`, `applyEvents`), audits a chain (`verifyChain`) and names a
+  document by `digest`, the SHA-256 of its RFC 8785 bytes. The bytes are the same in every
+  engine. `RevisionOutcomes` records a revision's events in an `OutcomeLedger`, with the new
+  `item_missing` and `placement_verified` event types.
+- An `examples/Revisions.java` example.
+
+### Changed
+
+- Every schema minimum is enforced: a quantity or limit below its floor, a negative length or
+  weight, `max_containers` below 1 and an effort limit below 1 are refused instead of
+  answered. `PackingConfig`, `EffortBudget` and `Container` refuse the same values when built
+  in code.
+- An integral float, such as `100.0` for a length or `2.0` for a quantity, is read as the
+  integer it is, as JavaScript cannot send anything else.
+- Containers are numbered per type from 1 on the container-plan beam (`quality`), as on every
+  other path and in every engine.
+- A refusal that quotes an out-of-range float spells it as the reference does (`1e+300`).
+- A request the model cannot be built from is refused with the reference's own text, the one
+  spelling every engine prints: domain, unit and configuration messages are lower-case as in
+  Python (`item id is required`, `all dimensions must be positive`), an obstacle without an
+  `id` or a rate table without one of its lists names the missing key (`'id'`), a list or
+  object in a tag set is `unhashable type`, and a `null` obstacle coordinate or length unit is
+  refused instead of read as the default.
+- A negative length or weight is refused as negative however large it is, instead of as an
+  unreadable measure once past the 64-bit tick range.
+- An artifact whose position tick is past 64 bits is refused as `number_out_of_range`, as in
+  the other engines, instead of `invalid_plan_input`.
+- The beam search sorts the remaining items' volumes and weights once per batch instead of
+  once per node. Results are unchanged.
+
 ## [1.3.0]
 
 Answers every request the way Packvium 1.3.0 does in the other languages, checked byte for

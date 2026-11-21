@@ -1,6 +1,9 @@
 package com.packvium.serialization;
 
+import com.packvium.support.JsonValue;
+import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -95,7 +98,27 @@ final class Fields {
     }
 
     List<String> strings(String name) {
-        return list(name).stream().map(Object::toString).toList();
+        List<String> strings = new ArrayList<>();
+        for (Object value : list(name)) {
+            if (value == null) {
+                throw new IllegalArgumentException(scope + "." + name + " cannot list null");
+            }
+            strings.add(value.toString());
+        }
+        return strings;
+    }
+
+    /**
+     * A tag set: as {@link #strings}, and a list or object member is refused as the reference's
+     * set refuses an unhashable value.
+     */
+    List<String> tags(String name) {
+        for (Object value : list(name)) {
+            if (value instanceof List || value instanceof Map) {
+                throw new IllegalArgumentException("unhashable type: '" + (value instanceof List ? "list" : "dict") + "'");
+            }
+        }
+        return strings(name);
     }
 
     Map<String, Object> object(String name) {
@@ -121,6 +144,11 @@ final class Fields {
         }
         if (value instanceof BigInteger) {
             throw new IllegalArgumentException(scope + "." + name + " exceeds integer range");
+        }
+        // An integral float is the integer JavaScript sends for `2`, and the reference reads it so.
+        Optional<Long> whole = JsonValue.integer(value);
+        if (value instanceof BigDecimal && whole.isPresent()) {
+            return whole.get();
         }
         throw new IllegalArgumentException(scope + "." + name + " must be an integer");
     }

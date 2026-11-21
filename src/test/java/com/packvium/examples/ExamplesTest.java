@@ -24,7 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Runs every shipped example the way its Javadoc tells a reader to, and checks what it prints
  * twice: against the committed Java output, and against what the reference example of the same
- * name prints at tag v1.3.0.
+ * name prints at tag v1.4.0.
  *
  * <p>The reference is PHP, the port's model, except where PHP has no such example:
  * {@code execution} continues into operator locks, {@code intelligence} exists at all only in
@@ -87,6 +87,9 @@ class ExamplesTest {
             "artifacts", Map.of(
                     "  contains a script or an external resource: false",
                     "  contains a script or an external resource: False"),
+            "revisions", Map.of(
+                    "  revision 0, parent null",
+                    "  revision 0, parent NULL"),
             "basic", Map.of(
                     "the full result as a plain array is what Serialization.java explores:",
                     "the full result as a plain array is what serialization.php explores:"),
@@ -97,7 +100,7 @@ class ExamplesTest {
                             + " yet implement item.shape_type=convex_hull; the request was rejec",
                     "  what one looks like, from an engine that is not: unsupported_feature: the PHP engine does not"
                             + " yet implement item.shape_type=convex_hull; the request was reject",
-                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.3.0.jar",
+                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.4.0.jar",
                     "the CLI takes exactly the document above:  echo '...' | php bin/packvium"),
             "commerce", Map.of(
                     "   nothing matched, so the shipment is allowed with no citation: null",

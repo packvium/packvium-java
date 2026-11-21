@@ -10,7 +10,7 @@ public record Point(long x, long y, long z) {
 
     public Point {
         if (Math.min(x, Math.min(y, z)) < 0) {
-            throw new IllegalArgumentException("Point coordinates cannot be negative");
+            throw new IllegalArgumentException("coordinates cannot be negative");
         }
     }
 

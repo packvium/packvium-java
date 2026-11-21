@@ -321,24 +321,25 @@ public final class Plan {
 
     /**
      * Python's {@code int()} of a tick count: an integer as it is, a fraction truncated toward
-     * zero, a boolean as 0 or 1 and a whole-number string parsed. A value past 64 bits is
-     * refused rather than wrapped, as everywhere else in this port.
+     * zero, a boolean as 0 or 1 and a whole-number string parsed. A value past 64 bits is carried
+     * as the exact integer the reference's {@code int()} makes of it, never wrapped, so the
+     * canonical writer refuses it as {@code number_out_of_range}, as it refuses one past 2^53.
      */
-    private static long integer(Object value) {
+    private static Number integer(Object value) {
         if (value instanceof Long || value instanceof Integer) {
             return ((Number) value).longValue();
         }
         if (value instanceof Boolean flag) {
-            return flag ? 1 : 0;
+            return flag ? 1L : 0L;
         }
         if (value instanceof BigInteger big) {
-            return exact(big);
+            return narrowed(big);
         }
         if (value instanceof BigDecimal decimal) {
-            return exact(decimal.toBigInteger());
+            return narrowed(decimal.toBigInteger());
         }
         if (value instanceof String text) {
-            return exact(parsedInteger(text));
+            return narrowed(parsedInteger(text));
         }
         throw new ExecutionPlanException("expected an integer, got " + describe(value));
     }
@@ -349,6 +350,10 @@ public final class Plan {
         } catch (NumberFormatException refused) {
             throw new ExecutionPlanException("invalid literal for int() with base 10: '" + text + "'", refused);
         }
+    }
+
+    private static Number narrowed(BigInteger value) {
+        return value.bitLength() < Long.SIZE ? (Number) value.longValue() : value;
     }
 
     private static long exact(BigInteger value) {

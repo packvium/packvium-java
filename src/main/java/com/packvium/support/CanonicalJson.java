@@ -49,6 +49,18 @@ public final class CanonicalJson {
         return out.toString();
     }
 
+    /**
+     * How a refusal quotes a value: its canonical JSON, the one spelling four engines share, so no
+     * engine's own representation leaks into a message another engine must match.
+     */
+    public static String spelling(Object value) {
+        try {
+            return encode(value);
+        } catch (CanonicalJsonException error) {
+            return error.errorCode().equals("number_out_of_range") ? "an out-of-range number" : "an unspellable value";
+        }
+    }
+
     private static void write(Object value, StringBuilder out) {
         if (value == null) {
             out.append("null");
@@ -163,7 +175,8 @@ public final class CanonicalJson {
 
     private static String number(double value) {
         if (!Double.isFinite(value) || Math.abs(value) > MAX_EXACT_MAGNITUDE) {
-            throw new CanonicalJsonException("number_out_of_range", "a float is beyond what every engine holds exactly");
+            throw new CanonicalJsonException("number_out_of_range",
+                    PythonRepr.floating(value) + " is beyond what every engine holds exactly");
         }
         if (value == 0) {
             return "0";

@@ -17,7 +17,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.3.0.jar examples/Objectives.java
+ *     java -cp target/packvium-1.4.0.jar examples/Objectives.java
  * </pre>
  *
  * <p>Every solve returns the arrangement that scores best -- but "best" is a choice, and it is

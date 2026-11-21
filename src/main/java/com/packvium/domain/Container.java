@@ -22,7 +22,8 @@ public record Container(
         Optional<Weight> maxStackDensity,
         Optional<AxlePair> axles,
         Optional<RateTable> rateTable,
-        List<String> accessDirections) {
+        List<String> accessDirections,
+        List<Placement> preloaded) {
 
     /**
      * {@code accessDirections} are the walls this container can be unloaded through.
@@ -30,20 +31,29 @@ public record Container(
      * sealed: defaulting to all six would be a different nearly-nothing and would change answers
      * for every caller who never set the field. Canonicalised here because every construction
      * path passes through this constructor.
+     *
+     * <p>{@code preloaded}: items already in this one container instance before search starts.
+     * Set only by the orchestrator, on the instance a request's {@code fixed_placements} name, so
+     * every solver's {@code ContainerState} starts from them without knowing they exist; a packed
+     * result carries the container with this emptied again (docs/PLAN-REVISIONS.md).
      */
     public Container {
+        preloaded = List.copyOf(preloaded);
         obstacles = List.copyOf(obstacles);
         tags = List.copyOf(tags);
         metadata = Immutables.orderedMap(metadata);
         tagLimits = Immutables.orderedMap(tagLimits);
         if (id.isEmpty()) {
-            throw new IllegalArgumentException("Container id is required");
+            throw new IllegalArgumentException("container id is required");
         }
         if (quantity.isPresent() && quantity.get() <= 0) {
-            throw new IllegalArgumentException("Container quantity must be positive");
+            throw new IllegalArgumentException("container quantity must be positive");
         }
         if (costMinor < 0) {
-            throw new IllegalArgumentException("Container cost cannot be negative");
+            throw new IllegalArgumentException("container cost cannot be negative");
+        }
+        if (maxItems.isPresent() && maxItems.get() < 1) {
+            throw new IllegalArgumentException("container max_items must be at least 1");
         }
         if (voidFillReserveRatio < 0 || voidFillReserveRatio > 1) {
             throw new IllegalArgumentException("void_fill_reserve_ratio must be between 0 and 1");
@@ -52,11 +62,18 @@ public record Container(
             throw new IllegalArgumentException("tag_limits must be at least 1");
         }
         if (outerDimensions.isPresent() && !innerDimensions.fitsInside(outerDimensions.get())) {
-            throw new IllegalArgumentException("Outer dimensions cannot be smaller than inner dimensions");
+            throw new IllegalArgumentException("outer dimensions cannot be smaller than inner dimensions");
         }
         requireObstaclesInside(innerDimensions, obstacles);
         axles.ifPresent(pair -> requireAxlesInside(innerDimensions, pair));
         accessDirections = canonicalDirections(accessDirections);
+    }
+
+    /** The same container holding {@code placements} before search. */
+    public Container withPreloaded(List<Placement> placements) {
+        return new Container(id, innerDimensions, outerDimensions, tareWeight, maxPayload, costMinor, quantity,
+                obstacles, tags, maxItems, metadata, voidFillReserveRatio, tagLimits, maxStackDensity, axles,
+                rateTable, accessDirections, placements);
     }
 
     public static Builder builder(String id, Dimensions innerDimensions) {
@@ -68,7 +85,7 @@ public record Container(
         for (Obstacle obstacle : obstacles) {
             for (AxisAlignedBox box : obstacle.boxes()) {
                 if (!boundary.contains(box)) {
-                    throw new IllegalArgumentException("Obstacle " + obstacle.id() + " lies outside container");
+                    throw new IllegalArgumentException("obstacle " + obstacle.id() + " lies outside container");
                 }
             }
         }
@@ -76,7 +93,7 @@ public record Container(
 
     private static void requireAxlesInside(Dimensions inner, AxlePair axles) {
         if (axles.rear().position().ticks() > inner.length().ticks()) {
-            throw new IllegalArgumentException("Axle positions must lie within the container's length");
+            throw new IllegalArgumentException("axle positions must lie within the container's length");
         }
     }
 
@@ -197,7 +214,7 @@ public record Container(
                     Optional.ofNullable(maxPayload), costMinor, Optional.ofNullable(quantity), obstacles, tags,
                     Optional.ofNullable(maxItems), metadata, voidFillReserveRatio, tagLimits,
                     Optional.ofNullable(maxStackDensity), Optional.ofNullable(axles),
-                    Optional.ofNullable(rateTable), accessDirections);
+                    Optional.ofNullable(rateTable), accessDirections, List.of());
         }
     }
 }

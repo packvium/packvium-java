@@ -16,7 +16,7 @@ This is the Java port of Packvium. It reads the same JSON requests as the Python
 reference engines, and its tests hold it to their answers byte for byte on the shared
 conformance corpus.
 
-> **Version 1.3.0.** This release corresponds to Packvium 1.3.0 in the other languages.
+> **Version 1.4.0.** This release corresponds to Packvium 1.4.0 in the other languages.
 > Field names, status codes and the objective vector stay the same for all of 1.x, so a
 > later 1.x release can replace any earlier one without code changes.
 
@@ -31,6 +31,7 @@ conformance corpus.
 - [Commerce: quotes, policy and catalogs](#commerce-quotes-policy-and-catalogs)
 - [Execution plans](#execution-plans)
 - [Operational artifacts](#operational-artifacts)
+- [Fixed placements and plan revisions](#fixed-placements-and-plan-revisions)
 - [Operator locks](#operator-locks)
 - [Scenario comparison, recommendations and holdout replay](#scenario-comparison-recommendations-and-holdout-replay)
 - [Examples](#examples)
@@ -49,20 +50,20 @@ Maven:
 <dependency>
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.3.0</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.packvium:packvium:1.3.0")
+implementation("com.packvium:packvium:1.4.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.packvium:packvium:1.3.0'
+implementation 'com.packvium:packvium:1.4.0'
 ```
 
 The jar has no dependencies of its own.
@@ -160,8 +161,34 @@ System.out.println(result.get("status"));         // feasible
 System.out.println(JsonWriter.write(result));      // the full result document
 ```
 
-A malformed request throws `IllegalArgumentException` with the same message the other
-engines give. A field the engine reserves but does not implement yet, such as
+A request no engine may answer throws `InvalidRequestException`, an
+`IllegalArgumentException` that names the bad value the way every engine names it:
+`errorCode()` is `invalid_request`, `reason()` one of a closed set (`missing_field`,
+`wrong_type`, `below_minimum`, `above_maximum`, `negative_measure`, `invalid_unit`,
+`duplicate_id`, `not_allowed`, `invalid_value`), `field()` the RFC 6901 JSON Pointer of the
+value, and the message is the same text in every engine:
+
+```java
+import com.packvium.serialization.InvalidRequestException;
+import com.packvium.serialization.JsonReader;
+import com.packvium.serialization.RequestPacker;
+
+try {
+    RequestPacker.pack(JsonReader.parse("""
+            {"items": [{"id": "box", "quantity": 0,
+                        "dimensions": {"length": "50", "width": "50", "height": "50"}}],
+             "containers": [{"id": "carton",
+                             "inner_dimensions": {"length": "100", "width": "100", "height": "100"}}]}
+            """));
+} catch (InvalidRequestException refused) {
+    System.out.println(refused.getMessage());      // invalid_request: /items/0/quantity: must be at least 1
+    System.out.println(refused.reason());          // below_minimum
+}
+```
+
+Every schema minimum is enforced, and so is the physics: no length or weight is negative.
+A value the rules do not name but the model cannot be built from arrives with reason
+`invalid_value` and field `""`. A field the engine reserves but does not implement yet, such as
 `container.pallet_overhang_limit`, is refused with `UnsupportedFeatureException`
 (`unsupported_feature`) rather than silently ignored. To get the JSON form of a result you
 built with domain objects, use `new ResultEncoder("mm", "g").encode(result)`.
@@ -333,6 +360,55 @@ with an `OperationalArtifactException` whose `errorCode()` comes from a closed s
 `invalid_string`, `invalid_value`, `unknown_format` and `invalid_json`. `Plan.canonicalJson`
 uses the same RFC 8785 spelling.
 
+## Fixed placements and plan revisions
+
+A request's `fixed_placements` names items that are already in a known place -- loaded, or
+locked there by an operator -- by container type and instance (`box#1` is
+`"container_type": "box", "container_instance": 1`) and by the physical origin a result
+reports. They take the first instances of their type, their containers open first and are
+kept, and the solve packs around them with their weight, support and top load counted. They
+come back with `"fixed": true`, and the independent validator refuses an answer that drops,
+moves or invents one. A fixed set that is not the schema's shape, or that cannot hold on its
+own, is refused before any search with `FixedPlacementException` (`invalid_fixed_placement`,
+reason `malformed` or `cannot_hold`), a subclass of `InvalidRequestException`. The typed API
+takes them too: `new Packer(config).pack(items, containers, fixedPlacements)`.
+
+A plan revision (`packvium-plan-revision/v1`) is the record of what changed after a plan was
+approved: an item missing, a carton substituted, a placement locked or verified. Each
+revision names its parent and the artifact it was recorded against by SHA-256 over their
+RFC 8785 bytes, and carries the request its events derive. The replan is an ordinary solve
+of that request; nothing here calls a solver or a clock, so every engine builds the same
+bytes.
+
+```java
+import com.packvium.artifacts.OperationalArtifact;
+import com.packvium.revisions.PlanRevision;
+import com.packvium.revisions.RevisionIssue;
+import com.packvium.serialization.RequestPacker;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+Map<String, Object> root = PlanRevision.root(request);
+Map<String, Object> approved = OperationalArtifact.build(root.get("request"), RequestPacker.pack(root.get("request")));
+Map<String, Object> revision = PlanRevision.derive(root, approved, List.of(
+        Map.of("sequence", 1L, "type", "placement_locked", "placement", Map.of(
+                "item_type", "box", "container_type", "carton",
+                "position", Map.of("x", "0", "y", "0", "z", "0"), "orientation", "LWH")),
+        Map.of("sequence", 2L, "type", "item_missing", "item_type", "box", "quantity", 1L)));
+Map<String, Object> replanned = RequestPacker.pack(revision.get("request"));  // the lock comes back fixed
+List<RevisionIssue> issues = PlanRevision.verifyChain(List.of(root, revision), Arrays.asList(null, approved));
+String digest = PlanRevision.digest(revision);                                  // sha256:...
+```
+
+`verifyChain` reports every way a stored chain fails to be what its root and events derive
+(`revision_number`, `parent_mismatch`, `sequence_gap`, `request_mismatch`,
+`artifact_mismatch`, `invalid_revision`) without stopping at the first. A revision that
+cannot be built is refused with `PlanRevisionException`, whose `errorCode()` is
+`invalid_revision`, `invalid_event`, `event_conflict`, `invalid_artifact` or a canonical-form
+code. `RevisionOutcomes.record` appends a revision's events to an `OutcomeLedger` as
+evidence for holdout replay, each named by the revision's digest.
+
 ## Operator locks
 
 An operator standing at the dock can pin a box: *this item stays here*. A lock is read
@@ -482,9 +558,9 @@ the validator rejects and a refused self-citation.
 
 ## Examples
 
-The [`examples/`](examples) directory has eleven runnable files. Each can be read from top to
+The [`examples/`](examples) directory has twelve runnable files. Each can be read from top to
 bottom and run with the JDK source launcher, with no project set up around it. The test
-suite (`ExamplesTest`) runs all eleven and compares what each prints with what the reference
+suite (`ExamplesTest`) runs all twelve and compares what each prints with what the reference
 example of the same name prints: the PHP one, except for `Execution.java`,
 `Intelligence.java` and `Artifacts.java`, whose reference is the Python one.
 
@@ -500,13 +576,14 @@ example of the same name prints: the PHP one, except for `Execution.java`,
 | [`Commerce.java`](examples/Commerce.java) | Rate a shipment, apply an eligibility rule and pin a catalog version. |
 | [`Execution.java`](examples/Execution.java) | Turn a result into a work order, then let an operator pin a box and see both ways a lock can fail. |
 | [`Artifacts.java`](examples/Artifacts.java) | Hand a result to a system with no engine: one document with geometry and provenance, exported as CSV, a printable work order and canonical JSON. |
+| [`Revisions.java`](examples/Revisions.java) | Replan a half-loaded job: record a lock and a missing item against the approved plan, keep the loaded box in place, and audit the chain. |
 | [`Intelligence.java`](examples/Intelligence.java) | Prove a carton change is better before publishing it: per-order Pareto comparison, a withheld proposal, holdout replay. |
 
 Build the jar once, then run any example against it:
 
 ```bash
 mvn -q package -DskipTests
-java -cp target/packvium-1.3.0.jar examples/Objectives.java
+java -cp target/packvium-1.4.0.jar examples/Objectives.java
 ```
 
 ## Command line
@@ -517,7 +594,7 @@ and writes the result JSON to standard output:
 ```bash
 echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
        "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
-  | java -jar target/packvium-1.3.0.jar
+  | java -jar target/packvium-1.4.0.jar
 ```
 
 When a request is refused, the program exits with status 1 and prints the reason on
@@ -565,8 +642,8 @@ any engine yet. A request that sets it is refused with `unsupported_feature`.
 
 ## Versioning
 
-The Java port follows the Packvium release history one version at a time: Java 1.3.0
-answers what every other Packvium 1.3.0 answers. A version is released only once the port
+The Java port follows the Packvium release history one version at a time: Java 1.4.0
+answers what every other Packvium 1.4.0 answers. A version is released only once the port
 passes that version's shared conformance corpus. Within 1.x, the request and result
 formats, status codes and objective vector stay compatible; what changed in each release
 is in the [changelog](CHANGELOG.md).

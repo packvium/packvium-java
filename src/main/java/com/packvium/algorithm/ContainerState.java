@@ -78,6 +78,11 @@ public final class ContainerState {
         for (AxisAlignedBox box : List.copyOf(occupied)) {
             absorb(exposedPoints(box));
         }
+        // Fixed items enter as real placements, so payload, support, top load and every other
+        // rule that reads `placements` holds for them with no rule of its own.
+        for (Placement placement : container.preloaded()) {
+            add(placement);
+        }
     }
 
     private ContainerState(ContainerState source) {
@@ -137,12 +142,10 @@ public final class ContainerState {
         // Retiring a point because it lies inside a solid's box assumes the box is the solid.
         // For a hull it is not: a wedge leaves most of its box, origin included, to the next
         // item, and pruning those points would hide an interlocking pack.
+        // `orderedPoints` holds exactly the points of `points`, so one pass over it retires the
+        // same set from both. O(P) for P free points.
         if (shape.isEmpty()) {
-            List<Point> retired = points.stream().filter(box::containsPoint).toList();
-            if (!retired.isEmpty()) {
-                retired.forEach(points::remove);
-                orderedPoints.removeAll(new LinkedHashSet<>(retired));
-            }
+            orderedPoints.removeIf(point -> box.containsPoint(point) && points.remove(point));
         }
         absorb(exposedPoints(box));
     }

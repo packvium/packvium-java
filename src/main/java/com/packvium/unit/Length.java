@@ -19,7 +19,7 @@ public record Length(long ticks) implements Comparable<Length> {
 
     public Length {
         if (ticks < 0) {
-            throw new IllegalArgumentException("Length cannot be negative");
+            throw new IllegalArgumentException("length cannot be negative");
         }
     }
 
@@ -68,7 +68,7 @@ public record Length(long ticks) implements Comparable<Length> {
             case "m" -> TICKS_PER_MM * 1000;
             case "in", "inch", "inches" -> TICKS_PER_INCH;
             case "ft" -> TICKS_PER_INCH * 12;
-            default -> throw new IllegalArgumentException("Unsupported length unit: " + unit);
+            default -> throw new IllegalArgumentException("unsupported length unit: " + unit);
         };
     }
 

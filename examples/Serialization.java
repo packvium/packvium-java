@@ -14,7 +14,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.3.0.jar examples/Serialization.java
+ *     java -cp target/packvium-1.4.0.jar examples/Serialization.java
  * </pre>
  *
  * <p>Everything the library can do is reachable over one JSON document, and that is not a
@@ -183,9 +183,9 @@ public final class Serialization {
         // a result on stdout -- which is how the cross-language conformance harness talks to
         // every engine:
         //
-        //     echo '<request json>' | java -jar target/packvium-1.3.0.jar
+        //     echo '<request json>' | java -jar target/packvium-1.4.0.jar
         // -----------------------------------------------------------------------------------
-        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.3.0.jar\n");
+        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.4.0.jar\n");
     }
 
     private static List<Map<?, ?>> objects(Object list) {

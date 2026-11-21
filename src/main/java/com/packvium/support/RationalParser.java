@@ -54,7 +54,7 @@ public final class RationalParser {
         return scaled(parse(value), multiplier, rounding);
     }
 
-    private static long scaled(Rational value, long multiplier, Rounding rounding) {
+    public static long scaled(Rational value, long multiplier, Rounding rounding) {
         long numerator = value.numerator();
         long denominator = value.denominator();
         // Cancel the denominator against the multiplier before multiplying. A value like
@@ -99,7 +99,7 @@ public final class RationalParser {
             return new Rational(negative ? -value : value, 1);
         }
         if (fraction.length() > MAX_FRACTIONAL_DIGITS) {
-            throw new IllegalArgumentException("Decimal has more fractional digits than a tick can distinguish");
+            throw new IllegalArgumentException("decimal has more fractional digits than a tick can distinguish");
         }
         long denominator = pow10(fraction.length());
         long numerator = exact(() -> Math.addExact(Math.multiplyExact(digits(whole), denominator), digits(fraction)));

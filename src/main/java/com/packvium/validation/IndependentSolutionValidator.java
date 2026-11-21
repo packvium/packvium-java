@@ -15,6 +15,7 @@ import com.packvium.domain.AxisAlignedBox;
 import com.packvium.domain.AxlePair;
 import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
+import com.packvium.domain.FixedPlacement;
 import com.packvium.domain.Item;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.Nesting;
@@ -23,14 +24,18 @@ import com.packvium.domain.PackedContainer;
 import com.packvium.domain.PackingRequest;
 import com.packvium.domain.Placement;
 import com.packvium.domain.Point;
+import com.packvium.domain.Rotation;
 import com.packvium.domain.UnpackedItem;
 import com.packvium.policy.PhpValues;
 import com.packvium.sequence.RouteSequenceError;
 import com.packvium.sequence.UnloadingDependencyGraph;
+import com.packvium.support.SortKey;
+import com.packvium.support.StableSorter;
 import com.packvium.unit.Length;
 import com.packvium.unit.Weight;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -116,12 +121,62 @@ public final class IndependentSolutionValidator {
         for (String detail : splitGroups(containers)) {
             issues.add(new ValidationIssue("group_split", detail));
         }
+        issues.addAll(fixedPlacementIssues(request, containers));
         if (unpacked.isPresent()) {
             for (String detail : partialGroups(request, containers)) {
                 issues.add(new ValidationIssue("group_partial", detail));
             }
         }
         return new ValidationReport(issues.isEmpty(), issues);
+    }
+
+    /**
+     * Every fixed placement is where the request put it, and nothing else claims to be.
+     *
+     * <p>Physics needs no rule: a fixed item is an ordinary placement, so every check above already
+     * applied to it. Only whether it moved is new (docs/PLAN-REVISIONS.md). O(f log f + n) for f
+     * fixed entries and n placements.
+     */
+    private static List<ValidationIssue> fixedPlacementIssues(PackingRequest request,
+            List<PackedContainer> containers) {
+        Set<FixedKey> requested = new HashSet<>();
+        for (FixedPlacement entry : request.fixedPlacements()) {
+            requested.add(new FixedKey(entry.packedContainerId(), entry.itemId(), entry.position(), entry.rotation()));
+        }
+        Set<FixedKey> reported = new HashSet<>();
+        Set<String> present = new HashSet<>();
+        for (PackedContainer packed : containers) {
+            present.add(packed.id());
+            for (Placement placement : packed.placements()) {
+                if (placement.fixed()) {
+                    reported.add(new FixedKey(packed.id(), placement.instance().item().id(), placement.position(),
+                            placement.rotation()));
+                }
+            }
+        }
+        List<ValidationIssue> issues = new ArrayList<>();
+        for (FixedKey key : FixedKey.sorted(requested.stream().filter(key -> !reported.contains(key)).toList())) {
+            String code = present.contains(key.containerId()) ? "fixed_placement_moved" : "fixed_container_missing";
+            issues.add(new ValidationIssue(code, key.detail()));
+        }
+        for (FixedKey key : FixedKey.sorted(reported.stream().filter(key -> !requested.contains(key)).toList())) {
+            issues.add(new ValidationIssue("unexpected_fixed_placement", key.detail()));
+        }
+        return issues;
+    }
+
+    /** One fixed placement as the request names it and as a result reports it. */
+    private record FixedKey(String containerId, String itemId, Point position, Rotation rotation) {
+        /** Ordered as Python orders its tuples: text by code point, coordinates as numbers. */
+        static List<FixedKey> sorted(List<FixedKey> keys) {
+            return StableSorter.sortBy(keys, key -> SortKey.of(key.containerId, key.itemId, key.position.x(),
+                    key.position.y(), key.position.z(), key.rotation.name()));
+        }
+
+        String detail() {
+            return itemId + " in " + containerId + " at (" + position.x() + ", " + position.y() + ", " + position.z()
+                    + ") " + rotation.name();
+        }
     }
 
     private static void validateContainer(PackedContainer packed, double minimumSupportRatio, long clearanceTicks,

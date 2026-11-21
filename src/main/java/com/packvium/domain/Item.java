@@ -79,13 +79,13 @@ public record Item(
     private static void requireScalarRules(String id, long quantity, double minimumSupportRatio,
             Optional<Long> maxStackedItems, Optional<String> groundContactRule) {
         if (id.isEmpty()) {
-            throw new IllegalArgumentException("Item id is required");
+            throw new IllegalArgumentException("item id is required");
         }
         if (quantity <= 0) {
-            throw new IllegalArgumentException("Item quantity must be positive");
+            throw new IllegalArgumentException("item quantity must be positive");
         }
         if (minimumSupportRatio < 0 || minimumSupportRatio > 1) {
-            throw new IllegalArgumentException("Minimum support ratio must be between 0 and 1");
+            throw new IllegalArgumentException("minimum_support_ratio must be between 0 and 1");
         }
         if (maxStackedItems.isPresent() && maxStackedItems.get() < 1) {
             throw new IllegalArgumentException("max_stacked_items must be at least 1");
@@ -115,7 +115,7 @@ public record Item(
                 ? allowed.stream().filter(Rotation.upright()::contains).toList()
                 : List.copyOf(allowed);
         if (admitted.isEmpty()) {
-            throw new IllegalArgumentException("At least one rotation must be allowed");
+            throw new IllegalArgumentException("at least one rotation must be allowed");
         }
         return admitted;
     }

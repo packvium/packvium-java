@@ -8,6 +8,7 @@ import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.Obstacle;
+import com.packvium.domain.Placement;
 import com.packvium.domain.Point;
 import com.packvium.extension.CandidateScorer;
 import com.packvium.support.SortKey;
@@ -54,6 +55,9 @@ public final class MaximalSpaceSolver implements SingleContainerSolver {
         List<AxisAlignedBox> obstacleBoxes = new ArrayList<>();
         for (Obstacle obstacle : container.obstacles()) {
             obstacleBoxes.addAll(obstacle.boxes());
+        }
+        for (Placement placement : container.preloaded()) {
+            obstacleBoxes.add(placement.envelopeBox());
         }
         List<Space> spaces = subtractAll(List.of(new Space(Point.ORIGIN, container.innerDimensions())), obstacleBoxes,
                 Optional.of(stats));

@@ -15,4 +15,19 @@ public record EffortBudget(
         Optional<Long> maxPlacementAttempts,
         Optional<Long> maxSearchNodes,
         Optional<Long> maxRestarts) {
+
+    public EffortBudget {
+        // A limit of zero or less would stop every search before its first step, which no
+        // caller means; the schema's floor for each is 1.
+        requireAtLeastOne("max_candidates_evaluated", maxCandidatesEvaluated);
+        requireAtLeastOne("max_placement_attempts", maxPlacementAttempts);
+        requireAtLeastOne("max_search_nodes", maxSearchNodes);
+        requireAtLeastOne("max_restarts", maxRestarts);
+    }
+
+    private static void requireAtLeastOne(String name, Optional<Long> limit) {
+        if (limit.isPresent() && limit.get() < 1) {
+            throw new IllegalArgumentException("effort_budget." + name + " must be at least 1");
+        }
+    }
 }

@@ -18,7 +18,11 @@ public enum OutcomeEventType {
     REPACK("repack", "reason_code", "new_carton_id"),
     DAMAGE("damage", "reason_code", "severity"),
     RETURN("return", "reason_code"),
-    OPERATOR_OVERRIDE("operator_override", "reason_code", "operator_id");
+    OPERATOR_OVERRIDE("operator_override", "reason_code", "operator_id"),
+    /** Recorded from an approved plan revision ({@code RevisionOutcomes}). */
+    ITEM_MISSING("item_missing", "item_type", "quantity"),
+    /** Recorded from an approved plan revision ({@code RevisionOutcomes}). */
+    PLACEMENT_VERIFIED("placement_verified", "item_type", "container_type");
 
     private static final List<OutcomeEventType> ALL = List.of(values());
 

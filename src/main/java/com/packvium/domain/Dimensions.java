@@ -14,7 +14,7 @@ import java.util.Set;
 public record Dimensions(Length length, Length width, Length height) {
     public Dimensions {
         if (Math.min(length.ticks(), Math.min(width.ticks(), height.ticks())) <= 0) {
-            throw new IllegalArgumentException("All dimensions must be positive");
+            throw new IllegalArgumentException("all dimensions must be positive");
         }
     }
 

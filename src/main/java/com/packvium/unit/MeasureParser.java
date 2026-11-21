@@ -1,5 +1,7 @@
 package com.packvium.unit;
 
+import com.packvium.support.JsonValue;
+import com.packvium.support.Rational;
 import com.packvium.support.RationalParser;
 import com.packvium.support.Text;
 import java.math.BigDecimal;
@@ -33,11 +35,24 @@ final class MeasureParser {
             }
             return scaled(written, defaultUnit, rounding);
         }
-        return RationalParser.scaled(integer(value), multiplier.applyAsLong(defaultUnit), rounding);
+        long unitMultiplier = multiplier.applyAsLong(defaultUnit);
+        return signed(RationalParser.parse(integer(value)), unitMultiplier, rounding);
     }
 
     long scaled(String value, String unit, Rounding rounding) {
-        return RationalParser.scaled(value, multiplier.applyAsLong(unit), rounding);
+        long unitMultiplier = multiplier.applyAsLong(unit);
+        return signed(RationalParser.parse(value), unitMultiplier, rounding);
+    }
+
+    /**
+     * A negative amount is refused as negative before its tick count is computed, so one past the
+     * 64-bit range is still named for its sign, as the reference's unbounded integers name it.
+     */
+    private long signed(Rational amount, long unitMultiplier, Rounding rounding) {
+        if (amount.numerator() < 0) {
+            throw new IllegalArgumentException(quantity + " cannot be negative");
+        }
+        return RationalParser.scaled(amount, unitMultiplier, rounding);
     }
 
     private long integer(Object value) {
@@ -47,12 +62,24 @@ final class MeasureParser {
         if (value instanceof Integer whole) {
             return whole;
         }
-        if (value instanceof BigInteger) {
+        if (value instanceof BigInteger big) {
+            if (big.bitLength() < Long.SIZE) {
+                return big.longValue();
+            }
+            if (big.signum() < 0) {
+                throw new IllegalArgumentException(quantity + " cannot be negative");
+            }
             throw new IllegalArgumentException("Scaled unit value exceeds integer range");
         }
         if (value instanceof BigDecimal || value instanceof Double || value instanceof Float) {
-            throw new IllegalArgumentException(
-                    "float " + quantity + " input is intentionally rejected; use a decimal string");
+            // A fraction in binary floating point is not the decimal the caller wrote; an integral
+            // float is exact, and JavaScript cannot send anything else for `100`.
+            BigInteger whole = JsonValue.wholeNumber(value instanceof Float single ? single.doubleValue() : value);
+            if (whole == null) {
+                throw new IllegalArgumentException(
+                        "float " + quantity + " input is intentionally rejected; use a decimal string");
+            }
+            return integer(whole);
         }
         throw new IllegalArgumentException("Invalid " + quantity + ": " + value);
     }
@@ -60,6 +87,10 @@ final class MeasureParser {
     private static String text(Object value) {
         if (value == null) {
             return "";
+        }
+        if (value instanceof Boolean flag) {
+            // The reference reads a measure object's value as a number, where a boolean is 1 or 0.
+            return flag ? "1" : "0";
         }
         return value.toString();
     }

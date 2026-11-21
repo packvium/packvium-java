@@ -11,7 +11,8 @@ import java.util.stream.Collectors;
  * error text is part of what this port reproduces: a caller matching on a message, or an operator
  * comparing two engines' diagnostics, must read the same characters. Those messages are f-strings
  * over a string ({@code {x!r}}), a list of strings ({@code {sorted(names)}}) or a tuple of ticks
- * ({@code {position_ticks}}), so those three are all this needs.
+ * ({@code {position_ticks}}); the canonical writer's out-of-range refusal quotes a float
+ * ({@code {value!r}}).
  *
  * <p>Strings follow CPython's quoting rule (single quotes unless the text holds a single quote and
  * no double quote) and escape the backslash, the quote in use, {@code \n}, {@code \r}, {@code \t}
@@ -42,6 +43,39 @@ public final class PythonRepr {
             return "(" + values.get(0) + ",)";
         }
         return values.stream().map(String::valueOf).collect(Collectors.joining(", ", "(", ")"));
+    }
+
+    /**
+     * {@code repr(float)}: the shortest round-trip digits, fixed between 1e-4 and 1e16 (with
+     * {@code .0} when integral), otherwise scientific with a signed exponent of at least two
+     * digits: {@code 1e+300}, {@code 9007199254740994.0}, {@code inf}.
+     */
+    public static String floating(double value) {
+        if (Double.isNaN(value)) {
+            return "nan";
+        }
+        if (Double.isInfinite(value)) {
+            return value > 0 ? "inf" : "-inf";
+        }
+        if (value == 0) {
+            return 1 / value < 0 ? "-0.0" : "0.0";
+        }
+        ShortestFloat.Digits shortest = ShortestFloat.digits(Math.abs(value));
+        String digits = shortest.digits();
+        int point = shortest.point();
+        int exponent = point - 1;
+        String rendered;
+        if (exponent < -4 || exponent >= 16) {
+            rendered = digits.charAt(0) + (digits.length() > 1 ? "." + digits.substring(1) : "") + "e"
+                    + (exponent < 0 ? "-" : "+") + String.format(Locale.ROOT, "%02d", Math.abs(exponent));
+        } else if (point >= digits.length()) {
+            rendered = digits + "0".repeat(point - digits.length()) + ".0";
+        } else if (point > 0) {
+            rendered = digits.substring(0, point) + "." + digits.substring(point);
+        } else {
+            rendered = "0." + "0".repeat(-point) + digits;
+        }
+        return (value < 0 ? "-" : "") + rendered;
     }
 
     private static void appendEscaped(StringBuilder out, int point, char quote) {

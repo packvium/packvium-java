@@ -136,4 +136,21 @@ class CanonicalJsonTest {
     private static String code(Object value) {
         return assertThrows(CanonicalJsonException.class, () -> CanonicalJson.encode(value)).errorCode();
     }
+
+    /** The refusal quotes the value as Python's {@code repr} does, since revision messages are compared. */
+    @Test
+    void anOutOfRangeFloatIsQuotedAsTheReferenceQuotesIt() {
+        double[] values = {1e300, 9007199254740994.0, 1e16, 1.2345678901234568e17, -1e22};
+        String[] quoted = {"1e+300", "9007199254740994.0", "1e+16", "1.2345678901234568e+17", "-1e+22"};
+        for (int index = 0; index < values.length; index++) {
+            double value = values[index];
+            CanonicalJsonException refusal = assertThrows(
+                    CanonicalJsonException.class, () -> CanonicalJson.encode(value));
+            assertEquals(quoted[index] + " is beyond what every engine holds exactly",
+                    refusal.getMessage());
+        }
+        assertEquals(List.of("1.5e-07", "0.0001", "1e-05", "inf"),
+                List.of(PythonRepr.floating(1.5e-7), PythonRepr.floating(0.0001), PythonRepr.floating(0.00001),
+                        PythonRepr.floating(Double.POSITIVE_INFINITY)));
+    }
 }

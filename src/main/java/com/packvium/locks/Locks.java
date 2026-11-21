@@ -8,6 +8,7 @@ import com.packvium.extension.ExtensionRegistry;
 import com.packvium.serialization.RequestDecoder;
 import com.packvium.serialization.RequestPacker;
 import com.packvium.support.PythonRepr;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -242,7 +243,8 @@ public final class Locks {
 
     private static long tick(Map<?, ?> ticks, String axis) {
         Object value = ticks.get(axis);
-        if (!(value instanceof Number number)) {
+        // A tick past 64 bits is refused, never truncated to a different position.
+        if (!(value instanceof Number number) || value instanceof BigInteger big && big.bitLength() >= Long.SIZE) {
             throw new IllegalArgumentException("a lock's position must be exact integer ticks");
         }
         return number.longValue();

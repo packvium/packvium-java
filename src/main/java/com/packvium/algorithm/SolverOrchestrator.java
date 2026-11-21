@@ -6,6 +6,7 @@ import com.packvium.config.SolverProfile;
 import com.packvium.constraint.PlacementConstraint;
 import com.packvium.domain.Container;
 import com.packvium.domain.ItemInstance;
+import com.packvium.domain.PackedContainer;
 import com.packvium.domain.UnpackedItem;
 import com.packvium.extension.CandidateScorer;
 import com.packvium.extension.ContainerSelector;
@@ -50,16 +51,29 @@ public final class SolverOrchestrator {
 
     public PortfolioRun solvePortfolio(List<ItemInstance> items, List<Container> containers, PackingConfig config,
             Deadline deadline) {
+        return solvePortfolio(items, containers, config, deadline, List.of());
+    }
+
+    /**
+     * Search for placements of {@code items}.
+     *
+     * <p>{@code preloaded} are the containers a request's fixed placements name, each holding only
+     * its fixed items, in the order they open ({@link FixedLoad}). Every start fills them first and
+     * keeps them, whatever else it does.
+     */
+    public PortfolioRun solvePortfolio(List<ItemInstance> items, List<Container> containers, PackingConfig config,
+            Deadline deadline, List<PackedContainer> preloaded) {
         List<Start> starts = starts(items, config);
         Optional<EffortBudget> budget = config.effortBudget();
         if (budget.isPresent() && budget.get().maxRestarts().isPresent()) {
             starts = starts.subList(0, (int) Math.min(budget.get().maxRestarts().get(), starts.size()));
         }
-        return solveSequential(items, containers, config, deadline, starts, budget);
+        return solveSequential(items, containers, config, deadline, starts, budget, preloaded);
     }
 
     private PortfolioRun solveSequential(List<ItemInstance> items, List<Container> containers, PackingConfig config,
-            Deadline deadline, List<Start> starts, Optional<EffortBudget> effortBudget) {
+            Deadline deadline, List<Start> starts, Optional<EffortBudget> effortBudget,
+            List<PackedContainer> preloaded) {
         List<RawSolution> results = new ArrayList<>();
         List<StartRecord> records = new ArrayList<>();
         starts.forEach(start -> records.add(new StartRecord(start.id(), false, false, false, false, false)));
@@ -73,7 +87,7 @@ public final class SolverOrchestrator {
             slice = effortBudget.isPresent() ? slice.withEffort(effortBudget.get(), stats) : slice;
             PackingConfig startConfig = start.orderName().endsWith(":greedy") ? greedyConfig(config) : config;
             ContainerPlanner.Outcome outcome = acrossContainers(start.solver(), start.order(), containers, startConfig,
-                    stats, slice);
+                    stats, slice, preloaded);
             boolean effortReached = slice.effortExceeded();
             boolean wallReached = outcome.reached() && slice.remainingNs() <= 0;
             List<UnpackedItem> unpacked = effortReached ? relabelEffort(outcome.unpacked()) : outcome.unpacked();
@@ -89,7 +103,7 @@ public final class SolverOrchestrator {
                 break;
             }
         }
-        return finishPortfolio(items, containers, deadline, results, records);
+        return finishPortfolio(items, containers, deadline, results, records, preloaded);
     }
 
     private static List<UnpackedItem> relabelEffort(List<UnpackedItem> unpacked) {
@@ -99,7 +113,7 @@ public final class SolverOrchestrator {
     }
 
     private PortfolioRun finishPortfolio(List<ItemInstance> items, List<Container> containers, Deadline deadline,
-            List<RawSolution> results, List<StartRecord> records) {
+            List<RawSolution> results, List<StartRecord> records, List<PackedContainer> preloaded) {
         boolean globalDeadline = deadline.expired();
         List<StartRecord> finished = new ArrayList<>(records.stream()
                 .map(record -> record.withGlobalDeadline(globalDeadline)).toList());
@@ -110,7 +124,7 @@ public final class SolverOrchestrator {
                 UnpackedReasons.Reason reason = reasons.reason(item, containers, true);
                 return new UnpackedItem(item, reason.code(), reason.details());
             }).toList();
-            solutions.add(new RawSolution(fallbackId, List.of(), unpacked, new SearchStats(), true, false, false));
+            solutions.add(new RawSolution(fallbackId, preloaded, unpacked, new SearchStats(), true, false, false));
             finished.add(new StartRecord(fallbackId, true, true, false, false, globalDeadline));
         }
         return new PortfolioRun(solutions, finished);
@@ -228,14 +242,17 @@ public final class SolverOrchestrator {
     }
 
     private ContainerPlanner.Outcome acrossContainers(SingleContainerSolver solver, List<ItemInstance> items,
-            List<Container> containers, PackingConfig config, SearchStats stats, Deadline deadline) {
+            List<Container> containers, PackingConfig config, SearchStats stats, Deadline deadline,
+            List<PackedContainer> preloaded) {
         boolean beam = config.containerPlanBeamWidth() > 1
                 && customSelector.map(selector -> selector instanceof DefaultContainerSelector).orElse(true);
         recordRootBound(solver, beam, items, containers, config, stats);
         ContainerPlanner planner = new ContainerPlanner(customSelector.orElseGet(DefaultContainerSelector::new),
                 reasons);
+        ContainerPlanner.Opened opened = ContainerPlanner.openPreloaded(solver, preloaded, items, containers, config,
+                stats, deadline);
         return beam
-                ? planner.plans(solver, items, containers, config, stats, deadline)
-                : planner.greedy(solver, items, containers, config, stats, deadline);
+                ? planner.plans(solver, items, containers, config, stats, deadline, opened)
+                : planner.greedy(solver, items, containers, config, stats, deadline, opened);
     }
 }

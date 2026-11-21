@@ -3,12 +3,14 @@ package com.packvium.serialization;
 import com.packvium.config.EffortBudget;
 import com.packvium.config.PackingConfig;
 import com.packvium.config.SolverProfile;
+import com.packvium.constraint.PlacementConstraint;
 import com.packvium.domain.Axle;
 import com.packvium.domain.AxlePair;
 import com.packvium.domain.AxisAlignedBox;
 import com.packvium.domain.Compression;
 import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
+import com.packvium.domain.FixedPlacement;
 import com.packvium.domain.Item;
 import com.packvium.domain.Obstacle;
 import com.packvium.domain.Point;
@@ -16,9 +18,16 @@ import com.packvium.domain.RateTable;
 import com.packvium.domain.Rotation;
 import com.packvium.domain.ShapeType;
 import com.packvium.domain.Vertex;
+import com.packvium.policy.PolicyRuleSet;
+import com.packvium.support.CanonicalJsonException;
+import com.packvium.support.FixedPlacementShape;
+import com.packvium.support.JsonValue;
+import com.packvium.support.RequestRules;
 import com.packvium.unit.Length;
 import com.packvium.unit.Rounding;
 import com.packvium.unit.Weight;
+import com.packvium.validation.FixedPlacementException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -41,11 +50,45 @@ public final class RequestDecoder {
         this.unsupported = unsupported;
     }
 
+    /**
+     * Read a decoded JSON request into the domain.
+     *
+     * <p>A request no engine may answer is refused with {@link InvalidRequestException} (or its
+     * subclass {@link FixedPlacementException}) naming the bad value: first the schema's rules over
+     * the raw JSON ({@link RequestRules}), then -- for anything those rules do not name --
+     * whatever failed while the model was built, as reason {@code invalid_value}. Only decoding
+     * runs here, never the solve, so a solver defect is never dressed up as the caller's mistake.
+     */
     public DecodedRequest decode(Object raw) {
-        Fields request = new Fields(raw, "request");
-        unsupported.reject((Map<?, ?>) raw);
-        String unit = request.child("units").text("length", "mm");
+        if (!(raw instanceof Map<?, ?> object)) {
+            throw new InvalidRequestException("wrong_type", "", "must be an object");
+        }
+        unsupported.reject(object);
+        RequestRules.check(raw);
+        try {
+            return model(new Fields(raw, "request"));
+        } catch (IllegalArgumentException | ArithmeticException | ClassCastException error) {
+            throw asRequestError(error);
+        }
+    }
+
+    /**
+     * The request's model, in the reference's order: configuration, catalog references, policy,
+     * items, containers, fixed placements.
+     */
+    private static DecodedRequest model(Fields request) {
+        Fields units = request.child("units");
+        if (units.members().containsKey("length") && units.raw("length") == null) {
+            // The rules read a null unit as the default; the model cannot, and says so as the
+            // other ports do (the reference fails on it outside its error set).
+            throw new IllegalArgumentException("unsupported length unit: None");
+        }
+        String unit = units.text("length", "mm");
         PackingConfig config = config(request.child("configuration"), unit);
+        List<Map<String, Object>> references = CatalogVersions.read(request.raw("catalog_versions_used"));
+        // Rules compile into the constraint pipeline rather than post-filtering a chosen answer: an
+        // illegal candidate is rejected during search, so the winner was never illegal.
+        List<PlacementConstraint> policy = PolicyRuleSet.fromArray(request.raw("policy")).constraints();
         List<Item> items = new ArrayList<>();
         for (Object entry : listOf(request.required("items"), "items")) {
             items.add(item(new Fields(entry, "item"), unit));
@@ -54,10 +97,41 @@ public final class RequestDecoder {
         for (Object entry : listOf(request.required("containers"), "containers")) {
             containers.add(container(new Fields(entry, "container"), unit));
         }
+        List<FixedPlacement> fixed = new ArrayList<>();
+        for (Map<?, ?> entry : FixedPlacementShape.requireEntries(request.raw("fixed_placements"), unit)) {
+            fixed.add(fixedPlacement(new Fields(entry, "fixed_placement"), unit));
+        }
         Fields output = request.child("output");
-        return new DecodedRequest(config, items, containers, output.text("length_unit", unit),
-                output.text("weight_unit", WEIGHT_UNIT), CatalogVersions.read(request.raw("catalog_versions_used")),
-                Optional.ofNullable(request.raw("policy")));
+        return new DecodedRequest(config, items, containers, fixed, output.text("length_unit", unit),
+                output.text("weight_unit", WEIGHT_UNIT), references, policy);
+    }
+
+    /**
+     * Whatever the rules did not name still reaches the caller as a request error. One that
+     * already carries its own code -- a request, fixed-placement or unsupported-feature refusal, or
+     * a canonical-form one -- passes through unchanged.
+     */
+    private static RuntimeException asRequestError(RuntimeException error) {
+        if (error instanceof InvalidRequestException || error instanceof UnsupportedFeatureException
+                || error instanceof CanonicalJsonException) {
+            return error;
+        }
+        return new InvalidRequestException("invalid_value", "", String.valueOf(error.getMessage()), error);
+    }
+
+    /**
+     * One entry {@link FixedPlacementShape} has already admitted, so every read here is exact: the
+     * names are strings, the orientation a code, the instance an integer by value.
+     */
+    private static FixedPlacement fixedPlacement(Fields entry, String unit) {
+        Fields position = entry.child("position");
+        Point origin = new Point(coordinate(position, "x", unit), coordinate(position, "y", unit),
+                coordinate(position, "z", unit));
+        long instance = entry.has("container_instance")
+                ? JsonValue.integer(entry.raw("container_instance")).orElseThrow()
+                : 1;
+        return new FixedPlacement(entry.text("item_type", ""), entry.text("container_type", ""), origin,
+                rotation(entry.text("orientation", "")), instance);
     }
 
     /**
@@ -129,12 +203,12 @@ public final class RequestDecoder {
                 .maxTopLoad(weight(item, "max_top_load", null))
                 .minimumSupportRatio(item.number("minimum_support_ratio", 0))
                 .group(item.optionalText("group").orElse(null))
-                .tags(item.strings("tags"))
-                .incompatibleTags(item.strings("incompatible_tags"))
+                .tags(item.tags("tags"))
+                .incompatibleTags(item.tags("incompatible_tags"))
                 .priority(item.integer("priority", 0))
                 .metadata(item.object("metadata"))
                 .maxStackedItems(item.optionalInteger("max_stacked_items"))
-                .eligibleContainerTags(item.strings("eligible_container_tags"))
+                .eligibleContainerTags(item.tags("eligible_container_tags"))
                 .groundContactRule(item.optionalText("ground_contact_rule").orElse(null))
                 .nestingHeight(item.has("nesting_height") ? Length.parse(item.raw("nesting_height"), unit) : null)
                 .stopIndex(item.optionalInteger("stop_index"))
@@ -198,7 +272,7 @@ public final class RequestDecoder {
                 .costMinor(container.integer("cost_minor", 0))
                 .quantity(container.optionalInteger("quantity"))
                 .obstacles(obstacles(container.list("obstacles"), unit))
-                .tags(container.strings("tags"))
+                .tags(container.tags("tags"))
                 .maxItems(container.optionalInteger("max_items"))
                 .metadata(container.object("metadata"))
                 .voidFillReserveRatio(container.number("void_fill_reserve_ratio", 0))
@@ -214,11 +288,18 @@ public final class RequestDecoder {
         List<Obstacle> obstacles = new ArrayList<>();
         for (Object entry : raw) {
             Fields obstacle = new Fields(entry, "obstacle");
-            List<AxisAlignedBox> additional = new ArrayList<>();
-            for (Object box : obstacle.list("additional_boxes")) {
-                additional.add(box(new Fields(box, "additional_box"), unit));
+            // In the reference's order -- id, box, additional boxes -- and with its refusal of a
+            // missing id (a KeyError, quoted as Python quotes it); a null id is the text `None`.
+            if (!obstacle.members().containsKey("id")) {
+                throw new IllegalArgumentException("'id'");
             }
-            obstacles.add(new Obstacle(obstacle.text("id", ""), box(obstacle, unit), additional));
+            String id = obstacle.has("id") ? obstacle.text("id", "") : "None";
+            AxisAlignedBox box = box(obstacle, unit);
+            List<AxisAlignedBox> additional = new ArrayList<>();
+            for (Object extra : obstacle.list("additional_boxes")) {
+                additional.add(box(new Fields(extra, "additional_box"), unit));
+            }
+            obstacles.add(new Obstacle(id, box, additional));
         }
         return obstacles;
     }
@@ -231,6 +312,11 @@ public final class RequestDecoder {
     }
 
     private static long coordinate(Fields origin, String axis, String unit) {
+        if (origin.members().containsKey(axis) && origin.raw(axis) == null) {
+            // The reference reads a present null as the text `None`, which its decimal parser
+            // refuses with this message.
+            throw new IllegalArgumentException("[<class 'decimal.ConversionSyntax'>]");
+        }
         return Length.parse(origin.has(axis) ? origin.raw(axis) : 0L, unit).ticks();
     }
 
@@ -256,6 +342,12 @@ public final class RequestDecoder {
     }
 
     private static RateTable rateTable(Fields table) {
+        // Both lists are required; a missing one is the reference's KeyError, quoted as Python quotes it.
+        for (String name : List.of("weight_brackets_g", "prices_minor")) {
+            if (!table.has(name)) {
+                throw new IllegalArgumentException("'" + name + "'");
+            }
+        }
         return new RateTable(integers(table.list("weight_brackets_g")), integers(table.list("prices_minor")),
                 table.integer("minimum_charge_minor", 0), table.integer("fuel_surcharge_permille", 0));
     }
@@ -263,10 +355,13 @@ public final class RequestDecoder {
     private static List<Long> integers(List<?> raw) {
         List<Long> values = new ArrayList<>();
         for (Object value : raw) {
-            if (!(value instanceof Long whole)) {
+            // An integral float is the integer JavaScript sends for `500`, and the reference reads it so.
+            Optional<Long> whole = value instanceof Long exact ? Optional.of(exact)
+                    : value instanceof BigDecimal ? JsonValue.integer(value) : Optional.empty();
+            if (whole.isEmpty()) {
                 throw new IllegalArgumentException("rate_table values must be integers");
             }
-            values.add(whole);
+            values.add(whole.get());
         }
         return values;
     }

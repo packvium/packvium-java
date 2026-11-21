@@ -17,7 +17,7 @@ public final class TopLoadAssigner {
         for (int index = 0; index < placements.size(); index++) {
             Placement p = placements.get(index);
             out.add(new Placement(p.instance(), p.position(), p.rotation(), p.dimensions(), p.envelopeOrigin(),
-                    p.envelopeDimensions(), p.supportRatio(), new Weight(loads[index])));
+                    p.envelopeDimensions(), p.supportRatio(), new Weight(loads[index]), p.fixed()));
         }
         return out;
     }

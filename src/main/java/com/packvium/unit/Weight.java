@@ -22,7 +22,7 @@ public record Weight(long ticks) implements Comparable<Weight> {
 
     public Weight {
         if (ticks < 0) {
-            throw new IllegalArgumentException("Weight cannot be negative");
+            throw new IllegalArgumentException("weight cannot be negative");
         }
     }
 
@@ -59,7 +59,7 @@ public record Weight(long ticks) implements Comparable<Weight> {
             case "kg" -> TICKS_PER_KG;
             case "oz" -> TICKS_PER_OZ;
             case "lb", "lbs" -> TICKS_PER_LB;
-            default -> throw new IllegalArgumentException("Unsupported weight unit: " + unit);
+            default -> throw new IllegalArgumentException("unsupported weight unit: " + unit);
         };
     }
 

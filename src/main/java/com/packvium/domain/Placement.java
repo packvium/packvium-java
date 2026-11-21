@@ -3,7 +3,12 @@ package com.packvium.domain;
 import com.packvium.unit.Weight;
 import java.util.Optional;
 
-/** One item instance at a position and rotation, with the clearance envelope it reserves. */
+/**
+ * One item instance at a position and rotation, with the clearance envelope it reserves.
+ *
+ * <p>{@code fixed}: placed by the request's {@code fixed_placements}, not by search; nothing may
+ * move it.
+ */
 public record Placement(
         ItemInstance instance,
         Point position,
@@ -12,7 +17,14 @@ public record Placement(
         Point envelopeOrigin,
         Dimensions envelopeDimensions,
         double supportRatio,
-        Weight topLoad) {
+        Weight topLoad,
+        boolean fixed) {
+
+    public Placement(ItemInstance instance, Point position, Rotation rotation, Dimensions dimensions,
+            Point envelopeOrigin, Dimensions envelopeDimensions, double supportRatio, Weight topLoad) {
+        this(instance, position, rotation, dimensions, envelopeOrigin, envelopeDimensions, supportRatio, topLoad,
+                false);
+    }
 
     public Placement(ItemInstance instance, Point position, Rotation rotation, Dimensions dimensions,
             Point envelopeOrigin, Dimensions envelopeDimensions, double supportRatio) {

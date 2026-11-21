@@ -130,7 +130,7 @@ public final class GridSolver implements SingleContainerSolver {
     }
 
     private boolean mustDelegate(Container container, List<ItemInstance> items) {
-        if (!container.obstacles().isEmpty() || items.isEmpty() || !supports(items)) {
+        if (!container.obstacles().isEmpty() || !container.preloaded().isEmpty() || items.isEmpty() || !supports(items)) {
             // A mixed-type list would place every item with the first item's dimensions.
             return true;
         }

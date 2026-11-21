@@ -177,7 +177,7 @@ class OperationalArtifactTest {
     void thePlanInsideIsExactlyThePlanBuilderOutput() {
         Map<String, Object> artifact = artifact();
         assertEquals(OperationalArtifact.FORMAT, artifact.get("format"));
-        assertEquals("1.3.0", artifact.get("suite_version"));
+        assertEquals("1.4.0", artifact.get("suite_version"));
         assertEquals(Plan.canonicalJson(Plan.build(request(), result(), REVERSED)),
                 Plan.canonicalJson(asMap(artifact.get("plan"))));
     }
@@ -387,6 +387,18 @@ class OperationalArtifactTest {
             return changed;
         });
         assertEquals("number_out_of_range", code(() -> OperationalArtifact.build(request(), result)));
+    }
+
+    /** Python's {@code int(1e300)} is exact, so the canonical writer, not the plan, refuses it. */
+    @Test
+    void aPositionTickPastSixtyFourBitsIsOutOfRangeNotABadPlan() {
+        for (String axis : List.of("x", "y", "z")) {
+            Map<String, Object> result = result(changed -> {
+                asMap(asMap(firstPlacement(changed).get("position")).get(axis)).put("ticks", new BigDecimal("1e300"));
+                return changed;
+            });
+            assertEquals("number_out_of_range", code(() -> OperationalArtifact.build(request(), result)), axis);
+        }
     }
 
     @Test

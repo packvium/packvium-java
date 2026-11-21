@@ -19,7 +19,8 @@ import java.util.Optional;
  *
  * <p>A width of one is plain best-fit greedy; wider keeps that many partial packings alive so an
  * early locally-best corner cannot dictate the whole layout. O(batches * width * branch * F) for F
- * the cost of one {@link CandidateFinder#find}, plus O(width * m log width) for the node keys.
+ * the cost of one {@link CandidateFinder#find}, plus O(width * m log width) for the node keys and
+ * O(f log f) per batch position to sort the f future items' volumes and weights once.
  */
 public final class BeamPacker {
     private BeamPacker() {
@@ -38,9 +39,9 @@ public final class BeamPacker {
         List<List<ItemInstance>> batches = GroupBatcher.batches(items);
         List<Node> beam = List.of(new Node(new ContainerState(container, sequence), List.of()));
         Node incumbent = greedyRollout(container, sequence, batches, config, constraints, stats, deadline, scorer);
-        // nodeKey builds an O(m) placement signature and a knapsack bound; computing it once per
-        // node instead of once per comparison changes no ordering.
-        SortKey incumbentKey = nodeKey(incumbent, List.of());
+        // nodeKey builds an O(m) placement signature; computing it once per node instead of once
+        // per comparison changes no ordering.
+        SortKey incumbentKey = nodeKey(incumbent, FutureBound.NONE);
         for (int position = 0; position < batches.size(); position++) {
             List<ItemInstance> batch = batches.get(position);
             List<Node> expansions = new ArrayList<>();
@@ -66,24 +67,27 @@ public final class BeamPacker {
             }
             List<ItemInstance> future = GroupBatcher.flatten(batches.subList(position + 1, batches.size()));
             for (Node expansion : expansions) {
-                Node candidate = new Node(expansion.state(), concat(expansion.unplaced(), future));
-                SortKey candidateKey = nodeKey(candidate, List.of());
+                // The key of the expansion with every future item unplaced, without building that
+                // O(n) list for a candidate that rarely wins.
+                SortKey candidateKey = nodeKey(expansion.state(), expansion.unplaced().size() + future.size(),
+                        FutureBound.NONE);
                 if (candidateKey.compareTo(incumbentKey) < 0) {
-                    incumbent = candidate;
+                    incumbent = new Node(expansion.state(), concat(expansion.unplaced(), future));
                     incumbentKey = candidateKey;
                 }
             }
             if (expansions.isEmpty()) {
                 break;
             }
-            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, future)), width);
+            FutureBound bound = FutureBound.of(future, container.maxPayload().isPresent());
+            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, bound)), width);
             if (exhausted) {
                 return new SingleContainerSolution(incumbent.state(), incumbent.unplaced(), false, deadline.expired(),
                         false);
             }
         }
-        List<Node> ordered = StableSorter.sortBy(beam, node -> nodeKey(node, List.of()));
-        Node chosen = !ordered.isEmpty() && nodeKey(ordered.get(0), List.of()).compareTo(incumbentKey) < 0
+        List<Node> ordered = StableSorter.sortBy(beam, node -> nodeKey(node, FutureBound.NONE));
+        Node chosen = !ordered.isEmpty() && nodeKey(ordered.get(0), FutureBound.NONE).compareTo(incumbentKey) < 0
                 ? ordered.get(0)
                 : incumbent;
         return new SingleContainerSolution(chosen.state(), chosen.unplaced());
@@ -140,7 +144,7 @@ public final class BeamPacker {
                     children.forEach(child -> expansions.add(new Node(child, node.unplaced())));
                 }
             }
-            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, List.of())), width);
+            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, FutureBound.NONE)), width);
             if (exhausted) {
                 Node best = beam.get(0);
                 List<ItemInstance> pending = GroupBatcher.flatten(batches.subList(position + 1, batches.size()));
@@ -196,53 +200,12 @@ public final class BeamPacker {
         return child;
     }
 
-    /** How many of the cheapest future items could still fit by volume alone. O(f log f). */
-    private static long maximumCountByVolume(List<ItemInstance> future, BigInteger capacity) {
-        List<BigInteger> costs = new ArrayList<>(future.stream().map(item -> item.dimensions().volume()).toList());
-        costs.sort(BigInteger::compareTo);
-        BigInteger used = BigInteger.ZERO;
-        long count = 0;
-        for (BigInteger cost : costs) {
-            BigInteger next = used.add(cost);
-            if (next.compareTo(capacity) > 0) {
-                break;
-            }
-            used = next;
-            count++;
-        }
-        return count;
+    private static SortKey nodeKey(Node node, FutureBound future) {
+        return nodeKey(node.state(), node.unplaced().size(), future);
     }
 
-    private static long unpackedLowerBound(ContainerState state, List<ItemInstance> unplaced,
-            List<ItemInstance> future) {
-        if (future.isEmpty()) {
-            return unplaced.size();
-        }
-        long possible = future.size();
-        if (future.stream().noneMatch(item -> item.item().nestingHeight().isPresent())) {
-            BigInteger capacity = state.container.innerDimensions().volume().subtract(state.usedVolume);
-            possible = Math.min(possible, maximumCountByVolume(future, capacity));
-        }
-        if (state.container.maxPayload().isPresent()) {
-            long capacity = Math.max(0, state.container.maxPayload().get().ticks() - state.payloadTicks);
-            long[] weights = future.stream().mapToLong(item -> item.weight().ticks()).sorted().toArray();
-            long used = 0;
-            long count = 0;
-            for (long weight : weights) {
-                if (used + weight > capacity) {
-                    break;
-                }
-                used += weight;
-                count++;
-            }
-            possible = Math.min(possible, count);
-        }
-        return unplaced.size() + future.size() - possible;
-    }
-
-    private static SortKey nodeKey(Node node, List<ItemInstance> future) {
-        ContainerState state = node.state();
-        return SortKey.of(unpackedLowerBound(state, node.unplaced(), future), (long) node.unplaced().size(),
+    private static SortKey nodeKey(ContainerState state, long unplacedCount, FutureBound future) {
+        return SortKey.of(future.unpackedLowerBound(state, unplacedCount), unplacedCount,
                 (long) -state.placements.size(), state.maxZ, state.usedVolume.negate(), state.placementSignature());
     }
 
@@ -255,6 +218,74 @@ public final class BeamPacker {
 
     private static <T> List<T> first(List<T> values, long count) {
         return new ArrayList<>(values.subList(0, (int) Math.min(count, values.size())));
+    }
+
+    /**
+     * The batches still to come, sorted once per beam position: their volumes ascending (absent
+     * when one nests, since nesting breaks the volume bound) and their weights ascending (absent
+     * when the container has no payload limit). Sorting once instead of once per node turns the
+     * lower bound from O(f log f) into O(f) per node, with the same values.
+     */
+    private record FutureBound(int count, Optional<List<BigInteger>> volumes, Optional<long[]> weights) {
+        static final FutureBound NONE = new FutureBound(0, Optional.empty(), Optional.empty());
+
+        static FutureBound of(List<ItemInstance> future, boolean hasMaxPayload) {
+            if (future.isEmpty()) {
+                return NONE;
+            }
+            Optional<List<BigInteger>> volumes = Optional.empty();
+            if (future.stream().noneMatch(item -> item.item().nestingHeight().isPresent())) {
+                volumes = Optional.of(future.stream().map(item -> item.dimensions().volume()).sorted().toList());
+            }
+            Optional<long[]> weights = hasMaxPayload
+                    ? Optional.of(future.stream().mapToLong(item -> item.weight().ticks()).sorted().toArray())
+                    : Optional.empty();
+            return new FutureBound(future.size(), volumes, weights);
+        }
+
+        /** How many items the node must leave unpacked at the least. O(f) for f future items. */
+        long unpackedLowerBound(ContainerState state, long unplacedCount) {
+            if (count == 0) {
+                return unplacedCount;
+            }
+            long possible = count;
+            if (volumes.isPresent()) {
+                BigInteger capacity = state.container.innerDimensions().volume().subtract(state.usedVolume);
+                possible = Math.min(possible, countWithin(volumes.get(), capacity));
+            }
+            if (weights.isPresent() && state.container.maxPayload().isPresent()) {
+                long capacity = Math.max(0, state.container.maxPayload().get().ticks() - state.payloadTicks);
+                possible = Math.min(possible, countWithin(weights.get(), capacity));
+            }
+            return unplacedCount + count - possible;
+        }
+
+        private static long countWithin(List<BigInteger> sortedCosts, BigInteger capacity) {
+            BigInteger used = BigInteger.ZERO;
+            long fitted = 0;
+            for (BigInteger cost : sortedCosts) {
+                BigInteger next = used.add(cost);
+                if (next.compareTo(capacity) > 0) {
+                    break;
+                }
+                used = next;
+                fitted++;
+            }
+            return fitted;
+        }
+
+        private static long countWithin(long[] sortedWeights, long capacity) {
+            long used = 0;
+            long fitted = 0;
+            for (long weight : sortedWeights) {
+                if (used + weight > capacity) {
+                    break;
+                }
+                used += weight;
+                fitted++;
+            }
+            return fitted;
+        }
     }
 
     /** A partial packing and the items it has given up on. */

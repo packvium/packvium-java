@@ -111,6 +111,10 @@ public final class ResultEncoder {
         out.put("orientation", placement.rotation().name());
         out.put("support_ratio", Formats.fixed6(placement.supportRatio()));
         out.put("top_load", placement.topLoad().toMap(weightUnit));
+        // Absent unless true, so a request without fixed placements keeps its bytes.
+        if (placement.fixed()) {
+            out.put("fixed", true);
+        }
         return out;
     }
 

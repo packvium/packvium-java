@@ -1,11 +1,14 @@
 package com.packvium;
 
 import com.packvium.algorithm.Deadline;
+import com.packvium.algorithm.FixedLoad;
+import com.packvium.algorithm.FixedPlacementAdmission;
 import com.packvium.algorithm.PortfolioRun;
 import com.packvium.algorithm.RawSolution;
 import com.packvium.algorithm.SolverOrchestrator;
 import com.packvium.config.PackingConfig;
 import com.packvium.domain.Container;
+import com.packvium.domain.FixedPlacement;
 import com.packvium.domain.Item;
 import com.packvium.domain.PackedContainer;
 import com.packvium.domain.PackingRequest;
@@ -56,14 +59,26 @@ public final class Packer {
     }
 
     public PackingResult pack(List<Item> items, List<Container> containers) {
-        PackingRequest request = new PackingRequest(items, containers);
+        return pack(items, containers, List.of());
+    }
+
+    /**
+     * Pack {@code items} around {@code fixedPlacements}, the items already in a known place: they
+     * take the first instances of their type, their containers open first and are kept, and they
+     * come back {@code fixed}. A fixed set that cannot hold on its own is refused with
+     * {@link com.packvium.validation.FixedPlacementException} before any search.
+     */
+    public PackingResult pack(List<Item> items, List<Container> containers, List<FixedPlacement> fixedPlacements) {
+        PackingRequest request = new PackingRequest(items, containers, fixedPlacements);
         refuseUnpriceableObjectives(request);
+        FixedLoad fixed = FixedPlacementAdmission.admit(request, config.minimumSupportRatio(), config.clearance(),
+                config.maxContainers());
         Deadline deadline = Deadline.ofMilliseconds(config.timeLimitMs(), clock);
         SolverOrchestrator orchestrator = new SolverOrchestrator(extensions.placementConstraints(),
                 extensions.itemOrderStrategies(), extensions.solvers(), extensions.candidateScorer(),
                 extensions.containerSelector());
-        PortfolioRun portfolio = orchestrator.solvePortfolio(request.instances(), request.containers(), config,
-                deadline);
+        PortfolioRun portfolio = orchestrator.solvePortfolio(fixed.free(), request.containers(), config, deadline,
+                fixed.containers());
         SolutionScorer scorer = solutionScorer.orElseGet(() -> ObjectiveRegistry.resolve(config.objective(), config));
         List<PackingResult> ranked = new ArrayList<>();
         for (RawSolution raw : portfolio.solutions()) {

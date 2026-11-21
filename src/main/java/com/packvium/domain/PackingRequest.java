@@ -5,18 +5,23 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.function.Function;
 
-public record PackingRequest(List<Item> items, List<Container> containers) {
+public record PackingRequest(List<Item> items, List<Container> containers, List<FixedPlacement> fixedPlacements) {
     public PackingRequest {
         items = List.copyOf(items);
         containers = List.copyOf(containers);
+        fixedPlacements = List.copyOf(fixedPlacements);
         if (items.isEmpty()) {
-            throw new IllegalArgumentException("At least one item is required");
+            throw new IllegalArgumentException("at least one item is required");
         }
         if (containers.isEmpty()) {
-            throw new IllegalArgumentException("At least one container is required");
+            throw new IllegalArgumentException("at least one container is required");
         }
-        requireUnique(items, Item::id, "Item");
-        requireUnique(containers, Container::id, "Container");
+        requireUnique(items, Item::id, "item");
+        requireUnique(containers, Container::id, "container");
+    }
+
+    public PackingRequest(List<Item> items, List<Container> containers) {
+        this(items, containers, List.of());
     }
 
     /** Every physical copy, in item order then sequence order. O(total quantity). */

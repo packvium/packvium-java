@@ -31,16 +31,19 @@ public record PackingConfig(
         solvers = List.copyOf(solvers);
         if (timeLimitMs <= 0 || topK <= 0 || exactItemLimit <= 0 || multiStartOrders <= 0
                 || maxCandidatesPerItem <= 0 || containerPlanBeamWidth <= 0 || containerPlanNodeLimit <= 0) {
-            throw new IllegalArgumentException("Positive configuration values required");
+            throw new IllegalArgumentException("positive configuration values required");
+        }
+        if (maxContainers.isPresent() && maxContainers.get() < 1) {
+            throw new IllegalArgumentException("max_containers must be at least 1");
         }
         if (maxCandidatePoints < 16) {
-            throw new IllegalArgumentException("maxCandidatePoints must be at least 16");
+            throw new IllegalArgumentException("max_candidate_points must be at least 16");
         }
         if (minimumSupportRatio < 0 || minimumSupportRatio > 1) {
-            throw new IllegalArgumentException("Minimum support ratio must be between 0 and 1");
+            throw new IllegalArgumentException("minimum_support_ratio must be between 0 and 1");
         }
         if (dimensionalWeightDivisor.isPresent() && dimensionalWeightDivisor.get() <= 0) {
-            throw new IllegalArgumentException("dimensionalWeightDivisor must be positive");
+            throw new IllegalArgumentException("dimensional_weight_divisor must be positive");
         }
     }
 

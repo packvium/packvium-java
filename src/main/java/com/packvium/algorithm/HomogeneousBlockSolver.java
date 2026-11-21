@@ -74,7 +74,8 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
     }
 
     private boolean supports(Container container, List<ItemInstance> items) {
-        if (!constraints.isEmpty() || !container.obstacles().isEmpty() || container.axles().isPresent()
+        if (!constraints.isEmpty() || !container.obstacles().isEmpty() || !container.preloaded().isEmpty()
+                || container.axles().isPresent()
                 || !container.tagLimits().isEmpty() || container.maxStackDensity().isPresent()
                 || container.voidFillReserveRatio() > 0) {
             return false;
