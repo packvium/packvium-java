@@ -160,10 +160,16 @@ public final class MaximalSpaceSolver implements SingleContainerSolver {
                 carved.space().origin().z(), carved.space().origin().y(), carved.space().origin().x(),
                 carved.space().dimensions().volume().negate()));
         // Without this filter every placement multiplies the list into overlapping duplicates.
+        long[][] extents = new long[kept.size()][];
+        for (int index = 0; index < kept.size(); index++) {
+            AxisAlignedBox box = box(kept.get(index).space());
+            extents[index] = new long[] {box.origin().x(), box.origin().y(), box.origin().z(), box.x2(), box.y2(),
+                box.z2()};
+        }
         List<Space> result = new ArrayList<>();
         for (int index = 0; index < kept.size(); index++) {
             Carved carved = kept.get(index);
-            if (carved.isNew() && dominated(kept, index)) {
+            if (carved.isNew() && isContained(extents, index)) {
                 continue;
             }
             result.add(carved.space());
@@ -176,10 +182,20 @@ public final class MaximalSpaceSolver implements SingleContainerSolver {
                 space -> SortKey.of(space.origin().z(), space.origin().y(), space.origin().x()));
     }
 
-    private static boolean dominated(List<Carved> kept, int index) {
-        AxisAlignedBox mine = box(kept.get(index).space());
-        for (int other = 0; other < kept.size(); other++) {
-            if (other != index && box(kept.get(other).space()).contains(mine)) {
+    /**
+     * Whether another extent contains {@code extents[index]}, for extents ordered by origin z. A
+     * container starts at or below what it contains, so the scan stops at the first extent that
+     * starts higher: O(prefix) instead of O(s), with no index to build.
+     */
+    private static boolean isContained(long[][] extents, int index) {
+        long[] mine = extents[index];
+        for (int other = 0; other < extents.length; other++) {
+            long[] extent = extents[other];
+            if (extent[2] > mine[2]) {
+                return false;
+            }
+            if (other != index && extent[0] <= mine[0] && extent[1] <= mine[1] && mine[3] <= extent[3]
+                    && mine[4] <= extent[4] && mine[5] <= extent[5]) {
                 return true;
             }
         }

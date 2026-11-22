@@ -4,6 +4,63 @@ What changed in `com.packvium:packvium` on Maven Central, release by release. Th
 follows [Keep a Changelog](https://keepachangelog.com/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0]
+
+Answers every request the way Packvium 1.5.0 does in the other languages, checked byte for
+byte against the 1.5.0 conformance corpus.
+
+### Added
+
+- Weight rebalancing: `WeightRebalancer.rebalance(request, containers, unpacked, config)` is
+  an opt-in pass over a finished packing. It moves one item at a time from the heaviest
+  container to a lighter one, and keeps a move only when the item finds a real place, the
+  payload spread strictly narrows and the whole packing still passes the independent
+  validator. It never adds a container, drops an item or moves a fixed one, and under
+  `lowest_landed_cost` it refuses what `Packer` refuses.
+- `OperationalArtifact.replayLevel(result)`: the replay promise an artifact of a result would
+  make, `exact` or `not_guaranteed`, without building the artifact.
+- Examples: `Errors.java`, `Extensions.java`, `FixedPlacements.java`, `Limits.java`,
+  `Rebalancing.java`, `Reproducibility.java` and `Trucking.java`.
+
+### Changed
+
+- A misspelt `configuration` or `effort_budget` key, such as `profile` for `solver_profile`, is
+  refused with reason `not_allowed` and the key's pointer (`/configuration/profile`) instead of
+  being ignored, and so is `parallel`. An unknown `objective` or access direction is
+  `not_allowed` at its pointer.
+- A fractional float as a measure object's `value` is refused, as a bare one already was.
+- A refused fixed placement or placement point with an extra field says `cannot carry`.
+- The `Serialization` and `Execution` examples send `solver_profile` and `alternatives`, the
+  field names the schema declares.
+
+### Fixed
+
+- The `quality` portfolio runs the starts the canonical Python engine runs: every start
+  greedy, then for each item type the best greedy order with that type packed last, then one
+  beam refinement of the best order. Java 1.4.0 ran PHP's portfolio, which refined the first
+  two orders instead, so **`quality` answers can differ from published 1.4.0**, in the chosen
+  start, `termination.starts` and sometimes the packing itself; they now equal Python's.
+- The homogeneous-block solver no longer reports full support for a block set on a smaller
+  one: each member of a block's bottom layer reports the share of its base that rests on
+  something. It now leaves a request that sets `minimum_support_ratio`, and compressible or
+  convex-hull items, to the per-item search.
+- A `null` access direction is refused as `not_allowed` instead of failing with an internal
+  error.
+- `configuration.seed` is read as the other engines read it: `true` and `false` are 1 and 0, a
+  float truncates, and a numeric string such as `"-1"` is parsed; anything else is refused with
+  the reference's message. `configuration.solvers` given as an object reads its keys, and a
+  number or boolean is refused as not iterable. An unknown solver name is refused with the
+  reference's message.
+- Scaling the most negative 64-bit tick count is refused as out of range instead of failing
+  with an `ArithmeticException`.
+
+### Performance
+
+- The collision index keeps up to 64 query answers between insertions, the beam skips
+  candidates that cannot beat the incumbent and reads its future bound from prefix sums, and
+  the maximal-space containment check stops at the first space that starts higher. Results
+  are unchanged on every fixture.
+
 ## [1.4.0]
 
 Answers every request the way Packvium 1.4.0 does in the other languages, checked byte for

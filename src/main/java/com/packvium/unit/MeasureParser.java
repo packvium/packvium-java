@@ -26,7 +26,15 @@ final class MeasureParser {
     long ticks(Object value, String defaultUnit, Rounding rounding) {
         if (value instanceof Map<?, ?> object) {
             Object unit = object.get("unit");
-            return scaled(text(object.get("value")), unit == null ? defaultUnit : text(unit), rounding);
+            String stated = unit == null ? defaultUnit : text(unit);
+            Object amount = object.get("value");
+            if (isFloat(amount)) {
+                // The reference reads an object's value through the same rule as a bare number,
+                // with the generic word: a fraction in binary floating point is refused.
+                long unitMultiplier = multiplier.applyAsLong(stated);
+                return signed(RationalParser.parse(integer(amount, "measure")), unitMultiplier, rounding);
+            }
+            return scaled(text(amount), stated, rounding);
         }
         if (value instanceof String written) {
             Matcher match = withUnit.matcher(Text.trim(written));
@@ -36,7 +44,7 @@ final class MeasureParser {
             return scaled(written, defaultUnit, rounding);
         }
         long unitMultiplier = multiplier.applyAsLong(defaultUnit);
-        return signed(RationalParser.parse(integer(value)), unitMultiplier, rounding);
+        return signed(RationalParser.parse(integer(value, quantity)), unitMultiplier, rounding);
     }
 
     long scaled(String value, String unit, Rounding rounding) {
@@ -55,7 +63,11 @@ final class MeasureParser {
         return RationalParser.scaled(amount, unitMultiplier, rounding);
     }
 
-    private long integer(Object value) {
+    private static boolean isFloat(Object value) {
+        return value instanceof BigDecimal || value instanceof Double || value instanceof Float;
+    }
+
+    private long integer(Object value, String word) {
         if (value instanceof Long whole) {
             return whole;
         }
@@ -71,15 +83,15 @@ final class MeasureParser {
             }
             throw new IllegalArgumentException("Scaled unit value exceeds integer range");
         }
-        if (value instanceof BigDecimal || value instanceof Double || value instanceof Float) {
+        if (isFloat(value)) {
             // A fraction in binary floating point is not the decimal the caller wrote; an integral
             // float is exact, and JavaScript cannot send anything else for `100`.
             BigInteger whole = JsonValue.wholeNumber(value instanceof Float single ? single.doubleValue() : value);
             if (whole == null) {
                 throw new IllegalArgumentException(
-                        "float " + quantity + " input is intentionally rejected; use a decimal string");
+                        "float " + word + " input is intentionally rejected; use a decimal string");
             }
-            return integer(whole);
+            return integer(whole, word);
         }
         throw new IllegalArgumentException("Invalid " + quantity + ": " + value);
     }

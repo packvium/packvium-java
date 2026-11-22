@@ -29,7 +29,7 @@ import java.util.Optional;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.4.0.jar examples/Intelligence.java
+ *     java -cp target/packvium-1.5.0.jar examples/Intelligence.java
  * </pre>
  *
  * <p>Every other example asks the engine to pack one shipment. This one asks a different question,

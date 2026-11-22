@@ -63,7 +63,8 @@ public final class RationalParser {
         long common = gcd(denominator, Math.abs(multiplier));
         long reducedMultiplier = multiplier / common;
         long scaledNumerator = exact(() -> Math.multiplyExact(numerator, reducedMultiplier));
-        return round(scaledNumerator, denominator / common, rounding);
+        // Long.MIN_VALUE has no magnitude in a long, so rounding it is refused like any overflow.
+        return exact(() -> round(scaledNumerator, denominator / common, rounding));
     }
 
     /**

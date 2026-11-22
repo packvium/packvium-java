@@ -6,7 +6,7 @@
 
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.4.0</version>
+    <version>1.5.0</version>
     <packaging>jar</packaging>
 
     <name>Packvium</name>
@@ -152,6 +152,9 @@
                             <publishingServerId>central</publishingServerId>
                             <autoPublish>true</autoPublish>
                             <waitUntil>published</waitUntil>
+                            <!-- Central took about two hours to publish 1.4.0; the default 30-minute
+                                 wait failed the job after a good upload and skipped attestation. -->
+                            <waitMaxTime>7200</waitMaxTime>
                         </configuration>
                     </plugin>
                 </plugins>

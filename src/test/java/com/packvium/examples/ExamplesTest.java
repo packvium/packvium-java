@@ -24,12 +24,13 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Runs every shipped example the way its Javadoc tells a reader to, and checks what it prints
  * twice: against the committed Java output, and against what the reference example of the same
- * name prints at tag v1.4.0.
+ * name prints at tag v1.5.0.
  *
  * <p>The reference is PHP, the port's model, except where PHP has no such example:
- * {@code execution} continues into operator locks, {@code intelligence} exists at all only in
- * Python, and PHP's {@code artifacts} packs another request without a loading order, so those three
- * are held to the Python output ({@link #REFERENCE}).
+ * {@code execution} continues into operator locks, {@code intelligence} and {@code rebalancing}
+ * exist only in Python, and PHP's {@code artifacts} packs another request without a loading order,
+ * so those four are held to the Python output ({@link #REFERENCE}). A file name in CamelCase is the
+ * reference's snake_case name: {@code FixedPlacements.java} is {@code fixed_placements}.
  *
  * <p>An example that still runs but now prints a different answer teaches a different thing, and
  * only a committed output notices that. The reference comparison keeps the answers themselves --
@@ -49,7 +50,7 @@ class ExamplesTest {
 
     /** The reference language of each example whose reference is not PHP. */
     private static final Map<String, String> REFERENCE = Map.of("execution", "python", "intelligence", "python",
-            "artifacts", "python");
+            "artifacts", "python", "rebalancing", "python");
 
     /** Per example, each Java line that differs from the reference only in naming the language, and that line. */
     private static final Map<String, Map<String, String>> LANGUAGE_WORDING = Map.of(
@@ -95,13 +96,22 @@ class ExamplesTest {
                     "the full result as a plain array is what serialization.php explores:"),
             "serialization", Map.of(
                     // The refusal names its engine, and "Java" is one character longer than "PHP",
-                    // so the example's 110-character excerpt ends one character earlier.
-                    "  what one looks like, from an engine that is not: unsupported_feature: the Java engine does not"
-                            + " yet implement item.shape_type=convex_hull; the request was rejec",
-                    "  what one looks like, from an engine that is not: unsupported_feature: the PHP engine does not"
-                            + " yet implement item.shape_type=convex_hull; the request was reject",
-                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.4.0.jar",
+                    // so the example's 100-character excerpt ends one character earlier.
+                    "  sending one anyway: unsupported_feature: the Java engine does not yet implement"
+                            + " container.pallet_overhang_limit; the req",
+                    "  sending one anyway: unsupported_feature: the PHP engine does not yet implement"
+                            + " container.pallet_overhang_limit; the requ",
+                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.5.0.jar",
                     "the CLI takes exactly the document above:  echo '...' | php bin/packvium"),
+            "errors", Map.of(
+                    // The reference names its own language's base exception.
+                    "  Both are `IllegalArgumentException`s, so a handler that ends with",
+                    "  Both are `InvalidArgumentException`s, so a handler that ends with",
+                    "  `catch (IllegalArgumentException e)` still turns them into a 422 -- but neither",
+                    "  `catch (InvalidArgumentException $e)` still turns them into a 422 -- but neither"),
+            "rebalancing", Map.of(
+                    "  still a valid packing: true", "  still a valid packing: True",
+                    "  pallet#1 30 kg (10 items)  improved: false", "  pallet#1 30 kg (10 items)  improved: False"),
             "commerce", Map.of(
                     "   nothing matched, so the shipment is allowed with no citation: null",
                     "   nothing matched, so the shipment is allowed with no citation: NULL"));
@@ -166,7 +176,8 @@ class ExamplesTest {
 
     private static String stem(Path example) {
         String file = example.getFileName().toString();
-        return file.substring(0, file.length() - ".java".length()).toLowerCase(Locale.ROOT);
+        String name = file.substring(0, file.length() - ".java".length());
+        return name.replaceAll("(?<=[a-z0-9])(?=[A-Z])", "_").toLowerCase(Locale.ROOT);
     }
 
     private static String javaBinary() {

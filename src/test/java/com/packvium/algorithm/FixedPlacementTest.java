@@ -237,7 +237,7 @@ class FixedPlacementTest {
         "\"x\"|fixed_placements is a list|/fixed_placements",
         "[5]|fixed_placements[0] is an object|/fixed_placements/0",
         "[{\"item_type\":\"cube\",\"container_type\":\"box\",\"orientation\":\"LWH\",\"note\":1}]"
-                + "|fixed_placements[0] does not carry [\"note\"]|/fixed_placements/0",
+                + "|fixed_placements[0] cannot carry [\"note\"]|/fixed_placements/0",
         "[{\"item_type\":\"cube\",\"container_type\":\"box\"}]|fixed_placements[0] needs [\"orientation\"]"
                 + "|/fixed_placements/0",
         "[{\"item_type\":\"cube\",\"container_type\":\"box\",\"orientation\":\"LWH\",\"container_instance\":\"1\"}]"

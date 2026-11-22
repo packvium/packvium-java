@@ -16,7 +16,7 @@ import static com.packvium.commerce.Commerce.quote;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.4.0.jar examples/Commerce.java
+ *     java -cp target/packvium-1.5.0.jar examples/Commerce.java
  * </pre>
  *
  * <p>Everything the three functions need arrives in one <em>commerce document</em>: the tariffs

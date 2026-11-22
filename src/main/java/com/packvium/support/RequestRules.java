@@ -6,6 +6,7 @@ import com.packvium.support.MeasureReading.Verdict;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,9 @@ import java.util.Set;
  */
 public final class RequestRules {
     public static final List<String> SOLVER_PROFILES = List.of("fast", "balanced", "quality", "exact_small");
+    public static final List<String> OBJECTIVES = List.of("default", "lowest_cost", "shipping_cost",
+            "lowest_landed_cost", "open_dimension_height", "maximum_value");
+    public static final List<String> ACCESS_DIRECTIONS = List.of("+x", "-x", "+y", "-y", "+z", "-z");
 
     private static final List<Map.Entry<String, Long>> CONFIGURATION_INTEGERS = List.of(
             Map.entry("time_limit_ms", 1L), Map.entry("alternatives", 1L), Map.entry("max_containers", 1L),
@@ -30,6 +34,13 @@ public final class RequestRules {
             Map.entry("dimensional_weight_divisor", 1L));
     private static final List<String> EFFORT_LIMITS = List.of("max_candidates_evaluated", "max_placement_attempts",
             "max_search_nodes", "max_restarts");
+    /** Every key the request schema's {@code configuration} declares; it sets {@code additionalProperties: false}. */
+    private static final Set<String> CONFIGURATION_FIELDS = Set.of(
+            "alternatives", "clearance", "container_plan_beam_width", "container_plan_node_limit",
+            "dimensional_weight_divisor", "dimensional_weight_length_unit", "dimensional_weight_weight_unit",
+            "effort_budget", "exact_item_limit", "max_candidate_points", "max_candidates_per_item", "max_containers",
+            "minimum_support_ratio", "multi_start_orders", "objective", "require_placement_coordinates", "seed",
+            "solver_profile", "solvers", "time_limit_ms");
     private static final List<String> SIDES = List.of("length", "width", "height");
     private static final List<String> AXES = List.of("x", "y", "z");
     private static final String WEIGHT_UNIT = "g";
@@ -81,11 +92,9 @@ public final class RequestRules {
         }
         String where = "/configuration";
         Map<?, ?> configuration = objectAt(raw, where);
-        Object profile = configuration.get("solver_profile");
-        if (profile != null && !SOLVER_PROFILES.contains(profile)) {
-            throw refuse("not_allowed", where + "/solver_profile",
-                    "must be one of " + CanonicalJson.spelling(SOLVER_PROFILES));
-        }
+        knownFields(configuration, where, CONFIGURATION_FIELDS);
+        optionalOneOf(configuration, "solver_profile", where, SOLVER_PROFILES);
+        optionalOneOf(configuration, "objective", where, OBJECTIVES);
         for (Map.Entry<String, Long> rule : CONFIGURATION_INTEGERS) {
             optionalInteger(configuration, rule.getKey(), where, rule.getValue());
         }
@@ -94,6 +103,7 @@ public final class RequestRules {
         Object effort = configuration.get("effort_budget");
         if (effort != null) {
             Map<?, ?> budget = objectAt(effort, where + "/effort_budget");
+            knownFields(budget, where + "/effort_budget", EFFORT_LIMITS);
             for (String name : EFFORT_LIMITS) {
                 optionalInteger(budget, name, where + "/effort_budget", 1);
             }
@@ -131,6 +141,10 @@ public final class RequestRules {
         optionalInteger(container, "max_items", where, 1);
         optionalInteger(container, "cost_minor", where, 0);
         optionalRatio(container, "void_fill_reserve_ratio", where, 1L);
+        Object accessDirections = container.get("access_directions");
+        if (accessDirections != null) {
+            accessDirections(accessDirections, where + "/access_directions");
+        }
         Object tagLimits = container.get("tag_limits");
         if (tagLimits != null) {
             tagLimits(tagLimits, where + "/tag_limits");
@@ -142,6 +156,13 @@ public final class RequestRules {
         Object obstacles = container.get("obstacles");
         if (obstacles != null) {
             obstacles(obstacles, where + "/obstacles", unit);
+        }
+    }
+
+    private static void accessDirections(Object raw, String where) {
+        List<?> directions = listAt(raw, where);
+        for (int index = 0; index < directions.size(); index++) {
+            oneOf(directions.get(index), where + "/" + index, ACCESS_DIRECTIONS);
         }
     }
 
@@ -268,6 +289,24 @@ public final class RequestRules {
         }
     }
 
+    private static void oneOf(Object value, String field, List<String> allowed) {
+        // List.of refuses to look a null up, and null is never an allowed value.
+        if (value == null || !allowed.contains(value)) {
+            throw refuse("not_allowed", field, "must be one of " + CanonicalJson.spelling(allowed));
+        }
+    }
+
+    /**
+     * The schema closes this object: a key it does not name is refused, never ignored. The first
+     * unknown key in code-point order is named, the order every engine can share. O(k log k).
+     */
+    private static void knownFields(Map<?, ?> object, String where, Collection<String> known) {
+        List<String> unknown = JsonValue.namesOutside(object, known);
+        if (!unknown.isEmpty()) {
+            throw refuse("not_allowed", pointer(where, unknown.get(0)), "is not a known field");
+        }
+    }
+
     private static Map<?, ?> objectAt(Object value, String field) {
         if (value instanceof Map<?, ?> object) {
             return object;
@@ -289,6 +328,13 @@ public final class RequestRules {
         Object value = object.get(name);
         if (value != null) {
             integer(value, where + "/" + name, minimum);
+        }
+    }
+
+    private static void optionalOneOf(Map<?, ?> object, String name, String where, List<String> allowed) {
+        Object value = object.get(name);
+        if (value != null) {
+            oneOf(value, where + "/" + name, allowed);
         }
     }
 

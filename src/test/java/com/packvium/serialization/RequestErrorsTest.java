@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.packvium.algorithm.UnknownSolverException;
 import com.packvium.config.EffortBudget;
 import com.packvium.config.PackingConfig;
 import com.packvium.config.SolverProfile;
@@ -14,6 +15,7 @@ import com.packvium.validation.FixedPlacementException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,7 +107,27 @@ class RequestErrorsTest {
                 Arguments.of(configuration("effort_budget", Map.of("max_restarts", 0L)), "below_minimum",
                         "/configuration/effort_budget/max_restarts", "must be at least 1"),
                 Arguments.of(configuration("max_containers", -1L), "below_minimum", "/configuration/max_containers",
-                        "must be at least 1"));
+                        "must be at least 1"),
+                // 1.5: the schema closes `configuration` and `effort_budget`, and names every
+                // objective and access direction.
+                Arguments.of(configuration("top_k", 2L).andThen(configuration("profile", "balanced")), "not_allowed",
+                        "/configuration/profile", "is not a known field"),
+                Arguments.of(configuration("effort_budget", Map.of("max_nodes", 1L)), "not_allowed",
+                        "/configuration/effort_budget/max_nodes", "is not a known field"),
+                Arguments.of(configuration("parallel", true), "not_allowed", "/configuration/parallel",
+                        "is not a known field"),
+                Arguments.of(configuration("objective", "cheapest"), "not_allowed", "/configuration/objective",
+                        "must be one of [\"default\",\"lowest_cost\",\"shipping_cost\",\"lowest_landed_cost\","
+                                + "\"open_dimension_height\",\"maximum_value\"]"),
+                Arguments.of(container("access_directions", List.of("upwards")), "not_allowed",
+                        "/containers/0/access_directions/0", "must be one of [\"+x\",\"-x\",\"+y\",\"-y\",\"+z\",\"-z\"]"),
+                Arguments.of(container("access_directions", "+x"), "wrong_type", "/containers/0/access_directions",
+                        "must be a list"),
+                Arguments.of(side("width", Map.of("value", new BigDecimal("0.5"))), "wrong_type",
+                        "/items/0/dimensions/width", "must be a measure"),
+                Arguments.of(container("access_directions", Arrays.asList("+x", null)), "not_allowed",
+                        "/containers/0/access_directions/1",
+                        "must be one of [\"+x\",\"-x\",\"+y\",\"-y\",\"+z\",\"-z\"]"));
     }
 
     /** Refusals the model raises after the rules, spelt as the reference spells them. */
@@ -132,7 +154,40 @@ class RequestErrorsTest {
                 Arguments.of(side("width", "0"), "all dimensions must be positive"),
                 Arguments.of(container("id", ""), "container id is required"),
                 Arguments.of(container("inner_dimensions", Map.of("length", "1", "width", "100", "height", "200"))
-                        .andThen(container("obstacles", List.of(pillar))), "obstacle p lies outside container"));
+                        .andThen(container("obstacles", List.of(pillar))), "obstacle p lies outside container"),
+                // The seed is read with int() and the solver list with tuple().
+                Arguments.of(configuration("seed", "x"), "invalid literal for int() with base 10: 'x'"),
+                Arguments.of(configuration("seed", " 1 cm"), "invalid literal for int() with base 10: ' 1 cm'"),
+                Arguments.of(configuration("seed", List.of(1L)),
+                        "int() argument must be a string, a bytes-like object or a real number, not 'list'"),
+                Arguments.of(configuration("seed", Map.of("value", "1")),
+                        "int() argument must be a string, a bytes-like object or a real number, not 'dict'"),
+                Arguments.of(configuration("solvers", 1L), "'int' object is not iterable"),
+                Arguments.of(configuration("solvers", true), "'bool' object is not iterable"));
+    }
+
+    /** What {@code int()} and {@code tuple()} accept is answered, as the reference answers it. */
+    static Stream<Consumer<Map<String, Object>>> coercedConfiguration() {
+        return Stream.of(configuration("seed", true), configuration("seed", false),
+                configuration("seed", new BigDecimal("1.5")), configuration("seed", " -1 "),
+                configuration("seed", "1_000"), configuration("solvers", Map.of()));
+    }
+
+    @Test
+    void aSolverStringIsIteratedIntoUnknownNamesAsInPython() {
+        Map<String, Object> data = request();
+        configuration("solvers", "x").accept(data);
+        assertEquals("unknown solver name(s) ['x']; expected one of ['exact_small', 'extreme_points', 'grid', "
+                + "'homogeneous_blocks', 'layer', 'maximal_spaces']",
+                assertThrows(UnknownSolverException.class, () -> RequestPacker.pack(data)).getMessage());
+    }
+
+    @ParameterizedTest
+    @MethodSource("coercedConfiguration")
+    void aSeedOrSolverListPythonCoercesIsAnswered(Consumer<Map<String, Object>> edit) {
+        Map<String, Object> data = request();
+        edit.accept(data);
+        assertTrue(RequestPacker.pack(data).containsKey("status"));
     }
 
     @ParameterizedTest

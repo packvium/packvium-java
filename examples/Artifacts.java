@@ -19,7 +19,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.4.0.jar examples/Artifacts.java
+ *     java -cp target/packvium-1.5.0.jar examples/Artifacts.java
  * </pre>
  *
  * <p>An execution plan says what to lift first. A warehouse or transport system needs more than

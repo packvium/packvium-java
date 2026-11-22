@@ -59,6 +59,25 @@ final class Fields {
         return value == null ? fallback : integerValue(value, name);
     }
 
+    /** {@code int(raw.get(name, fallback))}, as the reference reads the seed. */
+    long pythonInteger(String name, long fallback) {
+        Object value = members.get(name);
+        return value == null ? fallback : PythonCoercion.integer(value);
+    }
+
+    /** {@code tuple(raw.get(name, []))} of strings, as the reference reads the solver list. */
+    List<String> iteratedStrings(String name) {
+        Object value = members.get(name);
+        List<String> strings = new ArrayList<>();
+        for (Object member : value == null ? List.of() : PythonCoercion.iterated(value)) {
+            if (member == null) {
+                throw new IllegalArgumentException(scope + "." + name + " cannot list null");
+            }
+            strings.add(member.toString());
+        }
+        return strings;
+    }
+
     Long optionalInteger(String name) {
         Object value = members.get(name);
         return value == null ? null : integerValue(value, name);

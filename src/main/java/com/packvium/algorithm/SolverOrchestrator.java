@@ -13,12 +13,20 @@ import com.packvium.extension.ContainerSelector;
 import com.packvium.extension.DefaultCandidateScorer;
 import com.packvium.extension.DefaultContainerSelector;
 import com.packvium.extension.ItemOrderStrategy;
+import com.packvium.objective.ObjectiveRegistry;
+import com.packvium.objective.SolutionScorer;
 import com.packvium.result.StartRecord;
+import com.packvium.support.PythonRepr;
+import com.packvium.support.SortKey;
+import com.packvium.support.StableSorter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Runs the portfolio: every solver over every distinct item order, each start on its own slice
@@ -26,6 +34,7 @@ import java.util.Set;
  * scheduling.
  */
 public final class SolverOrchestrator {
+    private static final String NEIGHBORHOOD = "neighborhood:";
     private static final Set<String> SOLVER_NAMES = new LinkedHashSet<>(
             List.of("grid", "extreme_points", "homogeneous_blocks", "layer", "maximal_spaces", "exact_small"));
 
@@ -75,6 +84,7 @@ public final class SolverOrchestrator {
             Deadline deadline, List<Start> starts, Optional<EffortBudget> effortBudget,
             List<PackedContainer> preloaded) {
         List<RawSolution> results = new ArrayList<>();
+        Map<String, Start> completed = new HashMap<>();
         List<StartRecord> records = new ArrayList<>();
         starts.forEach(start -> records.add(new StartRecord(start.id(), false, false, false, false, false)));
         for (int position = 0; position < starts.size(); position++) {
@@ -82,10 +92,19 @@ public final class SolverOrchestrator {
                 break;
             }
             Start start = starts.get(position);
+            if (isStaged(start)) {
+                Optional<Start> staged = staged(start, results, completed, config);
+                if (staged.isEmpty()) {
+                    continue;
+                }
+                start = staged.get();
+            }
             SearchStats stats = new SearchStats();
             Deadline slice = deadline.slice(starts.size() - position);
             slice = effortBudget.isPresent() ? slice.withEffort(effortBudget.get(), stats) : slice;
-            PackingConfig startConfig = start.orderName().endsWith(":greedy") ? greedyConfig(config) : config;
+            PackingConfig startConfig = start.orderName().endsWith(":greedy") || start.orderName().contains(":late_")
+                    ? greedyConfig(config)
+                    : config;
             ContainerPlanner.Outcome outcome = acrossContainers(start.solver(), start.order(), containers, startConfig,
                     stats, slice, preloaded);
             boolean effortReached = slice.effortExceeded();
@@ -93,6 +112,7 @@ public final class SolverOrchestrator {
             List<UnpackedItem> unpacked = effortReached ? relabelEffort(outcome.unpacked()) : outcome.unpacked();
             results.add(new RawSolution(start.id(), outcome.packed(), unpacked, stats, wallReached, effortReached,
                     outcome.proven()));
+            completed.put(start.id(), start);
             records.set(position, new StartRecord(start.id(), true, !outcome.reached(), outcome.reached(), false,
                     false));
             // A single type's densest packing is the lattice just tried: once it placed everything,
@@ -104,6 +124,43 @@ public final class SolverOrchestrator {
             }
         }
         return finishPortfolio(items, containers, deadline, results, records, preloaded);
+    }
+
+    private static boolean isStaged(Start start) {
+        return start.orderName().startsWith(NEIGHBORHOOD) || start.orderName().endsWith(":beam");
+    }
+
+    /**
+     * A staged start resolved against what has already run, as Python's {@code _solve_sequential}
+     * resolves it: the best finished extreme-point start by the request's objective (ties by start
+     * id), a greedy one for a neighborhood. A neighborhood re-runs that order with one item type
+     * moved last ({@code :late_<type>}); the refinement re-runs it with the beam
+     * ({@code :beam}). Empty when no start qualifies yet, and the start is then skipped. O(r) scores
+     * and an O(r log r) sort over the r results so far, plus O(n) to reorder.
+     */
+    private static Optional<Start> staged(Start start, List<RawSolution> results, Map<String, Start> completed,
+            PackingConfig config) {
+        boolean neighborhood = start.orderName().startsWith(NEIGHBORHOOD);
+        List<RawSolution> eligible = results.stream()
+                .filter(result -> completed.get(result.solverName()).solver() instanceof ExtremePointSolver)
+                .filter(result -> !neighborhood || result.solverName().endsWith(":greedy"))
+                .toList();
+        if (eligible.isEmpty()) {
+            return Optional.empty();
+        }
+        SolutionScorer objective = ObjectiveRegistry.resolve(config.objective(), config);
+        RawSolution best = StableSorter.sortBy(eligible,
+                result -> SortKey.of(new SortKey(List.copyOf(objective.score(result).components())),
+                        result.solverName())).get(0);
+        Start base = completed.get(best.solverName());
+        if (!neighborhood) {
+            return Optional.of(new Start(base.solver(), base.orderName() + ":beam", base.order()));
+        }
+        String itemType = start.orderName().substring(NEIGHBORHOOD.length());
+        List<ItemInstance> order = new ArrayList<>();
+        base.order().stream().filter(item -> !item.item().id().equals(itemType)).forEach(order::add);
+        base.order().stream().filter(item -> item.item().id().equals(itemType)).forEach(order::add);
+        return Optional.of(new Start(base.solver(), base.orderName() + ":late_" + itemType, order));
     }
 
     private static List<UnpackedItem> relabelEffort(List<UnpackedItem> unpacked) {
@@ -142,20 +199,27 @@ public final class SolverOrchestrator {
         if (config.containerPlanBeamWidth() <= 1 || config.profile() != SolverProfile.QUALITY) {
             return starts;
         }
-        List<Start> withGreedy = new ArrayList<>();
+        // Python's staging: every start greedy first, then per item type one
+        // neighborhood of the best greedy order with that type last, then one beam refinement of
+        // the best order. The two staged kinds name their base only once it has run.
+        List<Start> staged = new ArrayList<>();
         for (Start start : starts) {
-            withGreedy.add(start.solver().name().equals("homogeneous_blocks")
+            staged.add(start.solver().name().equals("homogeneous_blocks")
                     ? start
                     : new Start(start.solver(), start.orderName() + ":greedy", start.order()));
         }
-        int refinements = 0;
-        for (Start start : starts) {
-            if (start.solver().name().equals("extreme_points") && refinements < 2) {
-                withGreedy.add(new Start(start.solver(), start.orderName() + ":beam", start.order()));
-                refinements++;
-            }
+        Optional<Start> extreme = starts.stream().filter(start -> start.solver().name().equals("extreme_points"))
+                .findFirst();
+        if (extreme.isEmpty()) {
+            return staged;
         }
-        return withGreedy;
+        TreeSet<String> itemTypes = new TreeSet<>(SortKey::compareCodePoints);
+        items.forEach(item -> itemTypes.add(item.item().id()));
+        for (String itemType : itemTypes) {
+            staged.add(new Start(extreme.get().solver(), NEIGHBORHOOD + itemType, extreme.get().order()));
+        }
+        staged.add(new Start(extreme.get().solver(), "best:beam", extreme.get().order()));
+        return staged;
     }
 
     /** The same config with the beams switched off, for the cheap greedy pass of a quality start. */
@@ -179,8 +243,11 @@ public final class SolverOrchestrator {
     private List<SingleContainerSolver> namedSolvers(List<String> names) {
         List<String> unknown = names.stream().filter(name -> !SOLVER_NAMES.contains(name)).toList();
         if (!unknown.isEmpty()) {
-            throw new UnknownSolverException("unknown solver name(s) " + String.join(", ", unknown)
-                    + "; expected one of " + String.join(", ", SOLVER_NAMES));
+            // Python's text, the one every engine prints: both lists as its repr, the known names sorted.
+            List<String> known = new ArrayList<>(SOLVER_NAMES);
+            known.sort(SortKey::compareCodePoints);
+            throw new UnknownSolverException("unknown solver name(s) " + PythonRepr.strings(unknown)
+                    + "; expected one of " + PythonRepr.strings(known));
         }
         return names.stream().map(this::solver).toList();
     }

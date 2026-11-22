@@ -98,7 +98,7 @@ public final class MeasureReading {
 
     /**
      * An object measure's {@code value}, which the reference reads as a number or its text: a
-     * boolean is the integer it is in Python, and a fractional float its decimal text.
+     * boolean is the integer it is in Python, and a float only when it is whole.
      */
     private static Optional<Object> amount(Object amount) {
         if (amount instanceof Long || amount instanceof String || amount instanceof BigInteger) {
@@ -107,9 +107,9 @@ public final class MeasureReading {
         if (amount instanceof Boolean flag) {
             return Optional.of(flag ? 1L : 0L);
         }
-        if (amount instanceof BigDecimal decimal && Double.isFinite(decimal.doubleValue())) {
-            Optional<Long> whole = JsonValue.integer(decimal);
-            return whole.isPresent() ? Optional.of(whole.get()) : Optional.of(decimal.toString());
+        if (amount instanceof BigDecimal) {
+            // A fraction in binary floating point is refused here as it is bare.
+            return Optional.ofNullable(JsonValue.wholeNumber(amount));
         }
         return Optional.empty();
     }

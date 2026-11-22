@@ -2,6 +2,8 @@ package com.packvium.algorithm;
 
 import com.packvium.config.PackingConfig;
 import com.packvium.constraint.PlacementConstraint;
+import com.packvium.constraint.internal.DirectSupportView;
+import com.packvium.constraint.internal.LoadSupportGraph;
 import com.packvium.domain.AxisAlignedBox;
 import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
@@ -11,6 +13,7 @@ import com.packvium.domain.OrientedDimensions;
 import com.packvium.domain.Placement;
 import com.packvium.domain.Point;
 import com.packvium.domain.Rotation;
+import com.packvium.domain.ShapeType;
 import com.packvium.extension.DefaultCandidateScorer;
 import com.packvium.support.SortKey;
 import com.packvium.unit.Weight;
@@ -50,7 +53,7 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
     @Override
     public SingleContainerSolution packOne(Container container, long sequence, List<ItemInstance> items,
             PackingConfig config, SearchStats stats, Deadline deadline) {
-        if (!supports(container, items)) {
+        if (!supports(container, items, config)) {
             return new ExtremePointSolver(constraints, new DefaultCandidateScorer())
                     .packOne(container, sequence, items, config, stats, deadline);
         }
@@ -73,7 +76,12 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
         return new SingleContainerSolution(best.state(), best.unpacked(), false, reached, false);
     }
 
-    private boolean supports(Container container, List<ItemInstance> items) {
+    private boolean supports(Container container, List<ItemInstance> items, PackingConfig config) {
+        // A block set on a smaller one overhangs it, so a request that asks for support is left
+        // to the per-item search.
+        if (config.minimumSupportRatio() > 0) {
+            return false;
+        }
         if (!constraints.isEmpty() || !container.obstacles().isEmpty() || !container.preloaded().isEmpty()
                 || container.axles().isPresent()
                 || !container.tagLimits().isEmpty() || container.maxStackDensity().isPresent()
@@ -84,7 +92,7 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
     }
 
     private static boolean unrestricted(Item item) {
-        return item.group().isEmpty() && item.tags().isEmpty() && item.incompatibleTags().isEmpty()
+        return item.shapeType() == ShapeType.RIGID_CUBOID && item.group().isEmpty() && item.tags().isEmpty() && item.incompatibleTags().isEmpty()
                 && item.eligibleContainerTags().isEmpty() && item.stackable() && !item.mustBeOnFloor()
                 && item.maxTopLoad().isEmpty() && item.maxStackedItems().isEmpty() && item.minimumSupportRatio() == 0.0
                 && item.groundContactRule().map("free"::equals).orElse(true) && item.nestingHeight().isEmpty()
@@ -219,13 +227,31 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
                             origin.y() + y * block.envelope().width().ticks(),
                             origin.z() + z * block.envelope().height().ticks());
                     Point position = new Point(point.x() + clearance, point.y() + clearance, point.z() + clearance);
-                    state.addDirect(new Placement(chosen.get(index++), position, block.rotation(), block.physical(),
-                            point, block.envelope(), 1.0, Weight.ZERO));
+                    ItemInstance member = chosen.get(index++);
+                    // Above its bottom layer a member rests on an identical footprint; the bottom
+                    // layer rests on whatever is there.
+                    double support = z == 0 ? memberSupport(state, member, point, block.envelope()) : 1.0;
+                    state.addDirect(new Placement(member, position, block.rotation(), block.physical(),
+                            point, block.envelope(), support, Weight.ZERO));
                     stats.candidatesEvaluated++;
                     stats.placementsAttempted++;
                 }
             }
         }
+    }
+
+    /**
+     * The share of a member's base that rests on the floor or on a box beneath it. O(P) over the
+     * container's placements, once per bottom-layer member.
+     */
+    private static double memberSupport(ContainerState state, ItemInstance instance, Point point,
+            Dimensions envelope) {
+        if (point.z() == 0) {
+            return 1.0;
+        }
+        DirectSupportView support = LoadSupportGraph.candidateView(state.placements, instance,
+                new AxisAlignedBox(point, envelope));
+        return (double) support.supportingArea() / envelope.baseAreaTicks();
     }
 
     private enum Mode {

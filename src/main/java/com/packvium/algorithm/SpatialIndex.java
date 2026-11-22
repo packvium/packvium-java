@@ -1,6 +1,8 @@
 package com.packvium.algorithm;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Uniform-grid broad phase for axis-aligned box collision queries.
@@ -18,6 +20,11 @@ import java.util.Arrays;
 public final class SpatialIndex {
     private static final long CELLS_PER_AXIS = 8;
     private static final int[] NONE = new int[0];
+    /**
+     * Answers kept per index between insertions. Every live search state owns its index, so the
+     * cache multiplies by the beam; the reference engine measured 64 as holding its 1.4.0 peak.
+     */
+    private static final int QUERY_CACHE_LIMIT = 64;
 
     private final long cellX;
     private final long cellY;
@@ -37,6 +44,13 @@ public final class SpatialIndex {
     private int generation;
     /** One past the largest registered index: what {@link #seen} must cover. */
     private int indexLimit;
+    /**
+     * Query answers by clamped cell range, valid for the current contents only: a candidate scan
+     * asks about far more boxes than there are distinct ranges, and an answer is a pure function
+     * of the contents. Looked up by key, never iterated, so its order cannot reach an answer; a
+     * fork starts without one, and an insertion empties it.
+     */
+    private Map<Long, int[]> answers;
 
     public SpatialIndex(long lengthTicks, long widthTicks, long heightTicks) {
         cellX = Math.max(1, ceilDiv(Math.max(1, lengthTicks), CELLS_PER_AXIS));
@@ -72,6 +86,7 @@ public final class SpatialIndex {
     }
 
     public void add(int index, long[] bound) {
+        answers = null;
         long[] range = cellRange(bound[0], bound[1], bound[2], bound[3], bound[4], bound[5]);
         if (range[1] > countX || range[3] > countY || range[5] > countZ) {
             // Registering a solid outside the grid would let a query miss it; that is a solver
@@ -90,19 +105,42 @@ public final class SpatialIndex {
     /**
      * Bound indices sharing at least one cell with the box, each once, in first-seen order.
      * Cells are visited in (x, y, z) order, so the sequence is a deterministic function of the
-     * contents; a box touching a single occupied cell gets that bucket back as-is.
+     * contents. The answer is shared with later queries of the same cells until the next
+     * insertion, so the caller must not write to it. O(1) for a range asked before; otherwise
+     * O(cells touched + entries in them).
      */
     public int[] query(long x1, long y1, long z1, long x2, long y2, long z2) {
         long[] range = cellRange(x1, y1, z1, x2, y2, z2);
         long endX = Math.min(range[1], countX);
         long endY = Math.min(range[3], countY);
         long endZ = Math.min(range[5], countZ);
+        if (range[0] >= endX || range[2] >= endY || range[4] >= endZ) {
+            return NONE;
+        }
+        // Each bound is at most CELLS_PER_AXIS, so the six fit a long with no collision.
+        long key = ((((range[0] * 9 + endX) * 9 + range[2]) * 9 + endY) * 9 + range[4]) * 9 + endZ;
+        if (answers == null) {
+            answers = new HashMap<>();
+        }
+        int[] answer = answers.get(key);
+        if (answer != null) {
+            return answer;
+        }
+        if (answers.size() >= QUERY_CACHE_LIMIT) {
+            answers.clear();
+        }
+        answer = collect(range[0], endX, range[2], endY, range[4], endZ);
+        answers.put(key, answer);
+        return answer;
+    }
+
+    private int[] collect(long startX, long endX, long startY, long endY, long startZ, long endZ) {
         int firstHit = -1;
         int hits = 0;
         int total = 0;
-        for (long ix = range[0]; ix < endX; ix++) {
-            for (long iy = range[2]; iy < endY; iy++) {
-                for (long iz = range[4]; iz < endZ; iz++) {
+        for (long ix = startX; ix < endX; ix++) {
+            for (long iy = startY; iy < endY; iy++) {
+                for (long iz = startZ; iz < endZ; iz++) {
                     int cell = cell(ix, iy, iz);
                     if (sizes[cell] > 0) {
                         if (hits++ == 0) {
@@ -122,9 +160,9 @@ public final class SpatialIndex {
         int[] out = new int[total];
         int count = 0;
         int mark = nextGeneration();
-        for (long ix = range[0]; ix < endX; ix++) {
-            for (long iy = range[2]; iy < endY; iy++) {
-                for (long iz = range[4]; iz < endZ; iz++) {
+        for (long ix = startX; ix < endX; ix++) {
+            for (long iy = startY; iy < endY; iy++) {
+                for (long iz = startZ; iz < endZ; iz++) {
                     int cell = cell(ix, iy, iz);
                     int[] bucket = cells[cell];
                     for (int position = 0; position < sizes[cell]; position++) {

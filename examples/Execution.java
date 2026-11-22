@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.4.0.jar examples/Execution.java
+ *     java -cp target/packvium-1.5.0.jar examples/Execution.java
  * </pre>
  *
  * <p>{@code pack()} answers where every box goes. That answer is not yet a work order: it does
@@ -43,7 +43,7 @@ public final class Execution {
                 "units", Map.of("length", "mm"),
                 // `time_limit_ms` is a safety fuse, not a target -- nothing in this scene comes
                 // close to it.
-                "configuration", Map.of("objective", "default", "profile", "balanced", "seed", 42L,
+                "configuration", Map.of("objective", "default", "solver_profile", "balanced", "seed", 42L,
                         "time_limit_ms", 60_000L),
                 "items", List.of(
                         Map.of("id", "printer", "quantity", 1L, "weight", "9 kg", "keep_upright", true,

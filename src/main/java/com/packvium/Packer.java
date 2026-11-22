@@ -12,12 +12,10 @@ import com.packvium.domain.FixedPlacement;
 import com.packvium.domain.Item;
 import com.packvium.domain.PackedContainer;
 import com.packvium.domain.PackingRequest;
-import com.packvium.domain.UnratedWeightException;
 import com.packvium.extension.ExtensionRegistry;
 import com.packvium.objective.LandedCostSolutionScorer;
 import com.packvium.objective.ObjectiveRegistry;
 import com.packvium.objective.SolutionScorer;
-import com.packvium.objective.UnknownObjectiveException;
 import com.packvium.result.AlgorithmReport;
 import com.packvium.result.PackingResult;
 import com.packvium.result.PackingStatus;
@@ -70,7 +68,7 @@ public final class Packer {
      */
     public PackingResult pack(List<Item> items, List<Container> containers, List<FixedPlacement> fixedPlacements) {
         PackingRequest request = new PackingRequest(items, containers, fixedPlacements);
-        refuseUnpriceableObjectives(request);
+        LandedCostSolutionScorer.requirePriceableObjective(config, request.containers());
         FixedLoad fixed = FixedPlacementAdmission.admit(request, config.minimumSupportRatio(), config.clearance(),
                 config.maxContainers());
         Deadline deadline = Deadline.ofMilliseconds(config.timeLimitMs(), clock);
@@ -91,49 +89,13 @@ public final class Packer {
                 .toList();
         List<PackingResult> selected = valid.isEmpty() ? ranked : valid;
         PackingResult best = selected.get(0);
-        refuseUnpriceableAnswer(best.containers());
+        LandedCostSolutionScorer.requirePriceable(best.containers(), config);
         // The unpriceable sentinel is a search device, never an answer, for runner-ups too: filter
         // before slicing to top-k.
         List<PackingResult> alternatives = selected.subList(1, selected.size()).stream()
                 .filter(result -> LandedCostSolutionScorer.unpriceableContainer(result.containers(), config).isEmpty())
                 .limit(Math.max(0, config.topK() - 1)).toList();
         return best.withAlternatives(alternatives);
-    }
-
-    /**
-     * Both cost objectives price billed weight, so both need the divisor; and landed cost needs a
-     * tariff on every container. Both are static properties of the request, so they are refused
-     * before any solver runs. There is no library-chosen default divisor.
-     */
-    private void refuseUnpriceableObjectives(PackingRequest request) {
-        boolean priced = config.objective().equals("shipping_cost")
-                || config.objective().equals(LandedCostSolutionScorer.OBJECTIVE_NAME);
-        if (priced && config.dimensionalWeightDivisor().isEmpty()) {
-            throw new UnknownObjectiveException(
-                    "the " + config.objective() + " objective requires configuration.dimensional_weight_divisor");
-        }
-        if (!config.objective().equals(LandedCostSolutionScorer.OBJECTIVE_NAME)) {
-            return;
-        }
-        for (Container container : request.containers()) {
-            if (container.rateTable().isEmpty()) {
-                throw new UnknownObjectiveException("the lowest_landed_cost objective requires a rate_table on every "
-                        + "container; '" + container.id() + "' has none");
-            }
-        }
-    }
-
-    /**
-     * Returning a packing the tariff cannot price would quote a number the carrier never
-     * published. The refusal lives here, not in the scorer: throwing while comparing candidates
-     * would abort runs that have a shippable answer.
-     */
-    private void refuseUnpriceableAnswer(List<PackedContainer> containers) {
-        LandedCostSolutionScorer.unpriceableContainer(containers, config).ifPresent(unpriceable -> {
-            throw new UnratedWeightException("container '" + unpriceable.containerId() + "' bills at "
-                    + unpriceable.billedGrams() + " g, above its rate table's last bracket ("
-                    + unpriceable.lastBracketG() + " g); the shipment has no published price");
-        });
     }
 
     private PackingResult rank(RawSolution raw, PackingRequest request, List<StartRecord> records,

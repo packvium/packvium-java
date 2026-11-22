@@ -177,7 +177,7 @@ class OperationalArtifactTest {
     void thePlanInsideIsExactlyThePlanBuilderOutput() {
         Map<String, Object> artifact = artifact();
         assertEquals(OperationalArtifact.FORMAT, artifact.get("format"));
-        assertEquals("1.4.0", artifact.get("suite_version"));
+        assertEquals("1.5.0", artifact.get("suite_version"));
         assertEquals(Plan.canonicalJson(Plan.build(request(), result(), REVERSED)),
                 Plan.canonicalJson(asMap(artifact.get("plan"))));
     }
@@ -292,6 +292,27 @@ class OperationalArtifactTest {
         Object provenance = OperationalArtifact.build(request(), result).get("provenance");
         assertNull(at(provenance, "solver"));
         assertEquals(Map.of("level", "not_guaranteed", "because", "provenance.solver"), at(provenance, "replay"));
+    }
+
+    /** {@code replayLevel} answers without building the artifact, by the same rule. */
+    @Test
+    void theReplayLevelIsThePromiseTheArtifactWouldMake() {
+        Map<String, Object> stopped = result(changed -> {
+            asMap(changed.get("algorithm")).put("time_limit_reached", true);
+            return changed;
+        });
+        Map<String, Object> unsaid = result(changed -> {
+            changed.remove("algorithm");
+            return changed;
+        });
+        for (Map<String, Object> result : List.of(result(), stopped, unsaid)) {
+            assertEquals(at(OperationalArtifact.build(request(), result), "provenance", "replay", "level"),
+                    OperationalArtifact.replayLevel(result));
+        }
+        assertEquals("exact", OperationalArtifact.replayLevel(result()));
+        assertEquals("invalid_result",
+                assertThrows(OperationalArtifactException.class, () -> OperationalArtifact.replayLevel(List.of()))
+                        .errorCode());
     }
 
     // ------------------------------------------------------------------------------ refusals

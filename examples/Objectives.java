@@ -17,7 +17,7 @@ import java.util.List;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.4.0.jar examples/Objectives.java
+ *     java -cp target/packvium-1.5.0.jar examples/Objectives.java
  * </pre>
  *
  * <p>Every solve returns the arrangement that scores best -- but "best" is a choice, and it is
@@ -27,7 +27,7 @@ import java.util.List;
  *
  * <p>The score is always a lexicographic vector of exact integers, never a float, and its first
  * key is always the unpacked count: no objective will ever leave an item behind to save money.
- * See docs/OBJECTIVE.md for the full key ordering.
+ * Every line below prints the whole vector, so each objective's key order is on the page.
  */
 public final class Objectives {
     // An example must not change answer merely because the host was busy. These solves need a

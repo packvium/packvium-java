@@ -16,7 +16,7 @@ This is the Java port of Packvium. It reads the same JSON requests as the Python
 reference engines, and its tests hold it to their answers byte for byte on the shared
 conformance corpus.
 
-> **Version 1.4.0.** This release corresponds to Packvium 1.4.0 in the other languages.
+> **Version 1.5.0.** This release corresponds to Packvium 1.5.0 in the other languages.
 > Field names, status codes and the objective vector stay the same for all of 1.x, so a
 > later 1.x release can replace any earlier one without code changes.
 
@@ -28,6 +28,7 @@ conformance corpus.
 - [The JSON request API](#the-json-request-api)
 - [Constraints and objectives](#constraints-and-objectives)
 - [Nested packing](#nested-packing)
+- [Weight rebalancing](#weight-rebalancing)
 - [Commerce: quotes, policy and catalogs](#commerce-quotes-policy-and-catalogs)
 - [Execution plans](#execution-plans)
 - [Operational artifacts](#operational-artifacts)
@@ -50,20 +51,20 @@ Maven:
 <dependency>
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.4.0</version>
+    <version>1.5.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.packvium:packvium:1.4.0")
+implementation("com.packvium:packvium:1.5.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.packvium:packvium:1.4.0'
+implementation 'com.packvium:packvium:1.5.0'
 ```
 
 The jar has no dependencies of its own.
@@ -187,11 +188,42 @@ try {
 ```
 
 Every schema minimum is enforced, and so is the physics: no length or weight is negative.
+`configuration` and its `effort_budget` are closed objects, as the schema declares them: a
+misspelt key such as `profile` for `solver_profile` or `top_k` for `alternatives` is refused
+with reason `not_allowed` and the key's own pointer, rather than leaving the request to run on
+defaults, and so is `parallel`, which no request may set. An unknown `objective` or access
+direction is `not_allowed` at its pointer too, and a fractional float is never a measure, bare
+or as an object's `value`: send `"160.5"` as a string.
+
+```java
+import com.packvium.serialization.InvalidRequestException;
+import com.packvium.serialization.JsonReader;
+import com.packvium.serialization.RequestPacker;
+
+try {
+    RequestPacker.pack(JsonReader.parse("""
+            {"configuration": {"profile": "quality"},
+             "items": [{"id": "box", "dimensions": {"length": "50", "width": "50", "height": "50"}}],
+             "containers": [{"id": "carton",
+                             "inner_dimensions": {"length": "100", "width": "100", "height": "100"}}]}
+            """));
+} catch (InvalidRequestException refused) {
+    System.out.println(refused.getMessage());      // invalid_request: /configuration/profile: is not a known field
+    System.out.println(refused.reason());          // not_allowed
+}
+```
+
 A value the rules do not name but the model cannot be built from arrives with reason
 `invalid_value` and field `""`. A field the engine reserves but does not implement yet, such as
 `container.pallet_overhang_limit`, is refused with `UnsupportedFeatureException`
-(`unsupported_feature`) rather than silently ignored. To get the JSON form of a result you
-built with domain objects, use `new ResultEncoder("mm", "g").encode(result)`.
+(`unsupported_feature`) rather than silently ignored. The typed API's own refusals are
+`IllegalArgumentException`s with names to catch: `UnsupportedFeatureException`,
+`UnknownSolverException` (a `solvers` entry the engine does not have),
+`UnknownObjectiveException` (an objective it does not know, or one the request cannot price)
+and `PolicyException` (a policy the engine cannot honour exactly as written).
+[`examples/Errors.java`](examples/Errors.java) turns a refused request into an HTTP answer. To
+get the JSON form of a result you built with domain objects, use
+`new ResultEncoder("mm", "g").encode(result)`.
 
 ## Constraints and objectives
 
@@ -276,6 +308,45 @@ NestedPackingResult result = new NestedPacker().pack(
 // result.levels() holds one PackingResult per level, in the order given.
 ```
 
+## Weight rebalancing
+
+The packer opens as few containers as it can and fills the first one tightly. When two pallets
+of similar weight are what you want, `WeightRebalancer.rebalance` is a separate, opt-in pass
+over the finished packing: each round moves one item from the heaviest container to a lighter
+one, heaviest item first, and keeps the move only when the item finds a real place in its new
+container, the payload spread strictly narrows and the whole packing still passes the
+independent validator. It never adds a container, never drops an item and never moves a fixed
+one; it stops when no single move helps, after `maxMoves` (64 by default) or at its time limit.
+
+```java
+import com.packvium.Packer;
+import com.packvium.algorithm.RebalanceResult;
+import com.packvium.algorithm.WeightRebalancer;
+import com.packvium.config.PackingConfig;
+import com.packvium.domain.Container;
+import com.packvium.domain.Dimensions;
+import com.packvium.domain.Item;
+import com.packvium.domain.PackingRequest;
+import com.packvium.result.PackingResult;
+import com.packvium.unit.Weight;
+import java.util.List;
+
+List<Item> items = List.of(Item.builder("paint", Dimensions.mm("300", "300", "380"))
+        .weight(Weight.parse("24 kg")).quantity(16).keepUpright(true).build());
+List<Container> pallets = List.of(Container.builder("pallet", Dimensions.mm("1200", "800", "1000"))
+        .maxPayload(Weight.parse("300 kg")).build());
+PackingConfig config = PackingConfig.balanced(60_000);
+PackingResult packed = new Packer(config).pack(items, pallets);
+RebalanceResult even = WeightRebalancer.rebalance(new PackingRequest(items, pallets, List.of()),
+        packed.containers(), packed.unpacked(), config);
+// even.moves() lists each WeightMove; even.containers() is the rebalanced packing.
+```
+
+The pass is greedy, so the spread it reaches is better, not necessarily the smallest possible.
+Under `lowest_landed_cost` it refuses what `Packer` refuses, and never makes a move that would
+bill a container past its rate table. [`examples/Rebalancing.java`](examples/Rebalancing.java)
+evens out two pallets of paint.
+
 ## Commerce: quotes, policy and catalogs
 
 `com.packvium.commerce.Api` prices a shipment against a versioned tariff, evaluates an
@@ -353,7 +424,8 @@ Object stored = OperationalArtifact.parse(json);            // a stored artifact
 
 `provenance.replay.level` is `exact` only when the result records how it was solved and the
 search finished inside its time limit; otherwise it is `not_guaranteed` and names the field
-that decided it. Anything an artifact cannot carry the same way in every engine is refused
+that decided it. `OperationalArtifact.replayLevel(result)` answers the same question without
+building the artifact. Anything an artifact cannot carry the same way in every engine is refused
 with an `OperationalArtifactException` whose `errorCode()` comes from a closed set:
 `invalid_request`, `invalid_result`, `invalid_plan_input`, `mixed_units`,
 `number_out_of_range` (a number beyond 2^53 - 1, which JavaScript cannot hold exactly),
@@ -558,19 +630,26 @@ the validator rejects and a refused self-citation.
 
 ## Examples
 
-The [`examples/`](examples) directory has twelve runnable files. Each can be read from top to
+The [`examples/`](examples) directory has nineteen runnable files. Each can be read from top to
 bottom and run with the JDK source launcher, with no project set up around it. The test
-suite (`ExamplesTest`) runs all twelve and compares what each prints with what the reference
+suite (`ExamplesTest`) runs all nineteen and compares what each prints with what the reference
 example of the same name prints: the PHP one, except for `Execution.java`,
-`Intelligence.java` and `Artifacts.java`, whose reference is the Python one.
+`Intelligence.java`, `Artifacts.java` and `Rebalancing.java`, whose reference is the Python one.
 
 | File | What it shows |
 | --- | --- |
 | [`Basic.java`](examples/Basic.java) | The smallest useful call: items go in and placements come out. |
 | [`Objectives.java`](examples/Objectives.java) | All six objectives, on scenes where they choose differently. |
 | [`Constraints.java`](examples/Constraints.java) | Upright-only, floor-only, top-load limits and tags, and how to read why an item was refused. |
+| [`Limits.java`](examples/Limits.java) | Fleet and vehicle limits: obstacles, `max_items`, tag limits, eligible container tags and `max_containers`. |
+| [`Trucking.java`](examples/Trucking.java) | A van with axle ratings on a three-stop route: axle loads, unloading and loading order, and what the driver can reach. |
+| [`FixedPlacements.java`](examples/FixedPlacements.java) | Pack a trailer that is already partly loaded, and see what is refused when the record cannot be true. |
+| [`Rebalancing.java`](examples/Rebalancing.java) | Even out the weight across pallets after packing. |
 | [`Units.java`](examples/Units.java) | Why there are no floats: fractional inches, exact ticks, and a refusal caused by a single tick. |
 | [`Serialization.java`](examples/Serialization.java) | The JSON contract, and which mistakes are refused and which are ignored. |
+| [`Errors.java`](examples/Errors.java) | Turn a refused request into a useful answer, the way a web handler would. |
+| [`Reproducibility.java`](examples/Reproducibility.java) | The same answer on every run: an effort budget instead of a clock, and how to read `termination`. |
+| [`Extensions.java`](examples/Extensions.java) | Rules the request has no field for: a custom constraint, solution scorer and container selector. |
 | [`Shapes.java`](examples/Shapes.java) | Items that do not fill their box: wedges sharing a crate as `convex_hull`, and a cushion that compresses until the crush limit refuses it. |
 | [`Nested.java`](examples/Nested.java) | Units go into cartons and cartons go onto a pallet, in one call. |
 | [`Commerce.java`](examples/Commerce.java) | Rate a shipment, apply an eligibility rule and pin a catalog version. |
@@ -583,7 +662,7 @@ Build the jar once, then run any example against it:
 
 ```bash
 mvn -q package -DskipTests
-java -cp target/packvium-1.4.0.jar examples/Objectives.java
+java -cp target/packvium-1.5.0.jar examples/Objectives.java
 ```
 
 ## Command line
@@ -594,7 +673,7 @@ and writes the result JSON to standard output:
 ```bash
 echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
        "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
-  | java -jar target/packvium-1.4.0.jar
+  | java -jar target/packvium-1.5.0.jar
 ```
 
 When a request is refused, the program exits with status 1 and prints the reason on
@@ -642,8 +721,8 @@ any engine yet. A request that sets it is refused with `unsupported_feature`.
 
 ## Versioning
 
-The Java port follows the Packvium release history one version at a time: Java 1.4.0
-answers what every other Packvium 1.4.0 answers. A version is released only once the port
+The Java port follows the Packvium release history one version at a time: Java 1.5.0
+answers what every other Packvium 1.5.0 answers. A version is released only once the port
 passes that version's shared conformance corpus. Within 1.x, the request and result
 formats, status codes and objective vector stay compatible; what changed in each release
 is in the [changelog](CHANGELOG.md).

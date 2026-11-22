@@ -3,6 +3,10 @@ package com.packvium.unit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.packvium.support.Rational;
+import com.packvium.support.RationalParser;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -47,6 +51,37 @@ class UnitsTest {
     @Test
     void rejectsFloatInput() {
         assertThrows(IllegalArgumentException.class, () -> Length.parse(1.5d, "mm"));
+    }
+
+    /** A fraction inside a measure object is refused as it is bare; a whole one is exact. */
+    @Test
+    void rejectsAFractionalFloatInsideAMeasureObject() {
+        assertEquals("float measure input is intentionally rejected; use a decimal string",
+                assertThrows(IllegalArgumentException.class,
+                        () -> Length.parse(Map.of("value", 1.2d, "unit", "mm"), "mm")).getMessage());
+        assertThrows(IllegalArgumentException.class, () -> Weight.parse(Map.of("value", 1.2d), "g"));
+        assertThrows(IllegalArgumentException.class,
+                () -> Weight.parse(Map.of("value", new BigDecimal("1.2"), "unit", "kg"), "g"));
+        assertEquals(Length.parse(Map.of("value", 100L), "mm"), Length.parse(Map.of("value", 100.0d), "mm"));
+        assertEquals(Weight.parse(Map.of("value", 2L, "unit", "kg"), "g"),
+                Weight.parse(Map.of("value", 2.0d, "unit", "kg"), "g"));
+    }
+
+    /** Integer parsing stays exact past 64 bits or is refused, never wrapped. */
+    @Test
+    void refusesWholeNumbersPastTheTickRange() {
+        for (String text : List.of("99999999999999999999", "-99999999999999999999", "9223372036854775807 1/2",
+                "9223372036854775807.5")) {
+            assertThrows(IllegalArgumentException.class, () -> RationalParser.parse(text), text);
+        }
+        assertThrows(IllegalArgumentException.class,
+                () -> RationalParser.scaled("99999999999999999999", 1, Rounding.NEAREST));
+        assertThrows(IllegalArgumentException.class, () -> RationalParser.scaled(Long.MIN_VALUE, 1, Rounding.NEAREST));
+        assertEquals(new Rational(Long.MIN_VALUE, 1), RationalParser.parse("-9223372036854775808/1"));
+        assertEquals("1", RationalParser.decimalString(999_999_999, 1_000_000_000, 8));
+        assertEquals("-1", RationalParser.decimalString(-999_999_999, 1_000_000_000, 8));
+        assertEquals("2", RationalParser.decimalString(3, 2, 0));
+        assertEquals("2", RationalParser.decimalString(5, 2, 0));
     }
 
     @ParameterizedTest

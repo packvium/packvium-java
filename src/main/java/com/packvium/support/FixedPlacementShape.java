@@ -53,7 +53,7 @@ public final class FixedPlacementShape {
         }
         List<String> unknown = JsonValue.namesOutside(object, AXES);
         if (!unknown.isEmpty()) {
-            throw refuse.apply(where + " does not carry " + CanonicalJson.spelling(unknown), field);
+            throw refuse.apply(where + " cannot carry " + CanonicalJson.spelling(unknown), field);
         }
         for (String axis : AXES) {
             Object value = object.get(axis);
@@ -70,7 +70,7 @@ public final class FixedPlacementShape {
         }
         List<String> unknown = JsonValue.namesOutside(entry, FIELDS);
         if (!unknown.isEmpty()) {
-            throw malformed(where + " does not carry " + CanonicalJson.spelling(unknown), field);
+            throw malformed(where + " cannot carry " + CanonicalJson.spelling(unknown), field);
         }
         List<String> missing = REQUIRED.stream().filter(name -> !entry.containsKey(name)).toList();
         if (!missing.isEmpty()) {

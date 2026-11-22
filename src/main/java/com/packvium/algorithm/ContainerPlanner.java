@@ -255,9 +255,8 @@ final class ContainerPlanner {
             List<Plan> expansions = new ArrayList<>();
             for (Plan plan : beam) {
                 if (plan.remaining().isEmpty() || plan.packed().size() >= maximum) {
-                    if (better(plan, incumbent, config)) {
-                        incumbent = plan;
-                    }
+                    // Already weighed against the incumbent when it was created (below), and the
+                    // incumbent only ever improves, so it cannot win now.
                     continue;
                 }
                 for (Container container : ordered) {

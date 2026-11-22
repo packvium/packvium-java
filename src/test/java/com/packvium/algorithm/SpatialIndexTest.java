@@ -82,6 +82,88 @@ class SpatialIndexTest {
         assertArrayEquals(new int[] {0, 1}, fork.query(0, 0, 0, 1, 1, 1));
     }
 
+    /** A cached answer is the same answer, and an insertion into either fork drops it there only. */
+    @Test
+    void repeatedRangesAreCachedAndDroppedOnInsertion() {
+        SpatialIndex index = new SpatialIndex(800, 800, 800);
+        index.add(0, new long[] {0, 0, 0, 150, 150, 150});
+        long[] query = {0, 0, 0, 160, 160, 160};
+        assertArrayEquals(new int[] {0}, query(index, query));
+        assertTrue(query(index, query) == query(index, query), "a repeated range is answered from the cache");
+        SpatialIndex fork = index.copy();
+        index.add(1, new long[] {100, 100, 100, 180, 180, 180});
+        assertArrayEquals(new int[] {0, 1}, query(index, query));
+        assertArrayEquals(new int[] {0}, query(fork, query));
+        fork.add(2, new long[] {100, 100, 100, 180, 180, 180});
+        assertArrayEquals(new int[] {0, 2}, query(fork, query));
+        assertArrayEquals(new int[] {0, 1}, query(index, query));
+    }
+
+    /** More distinct ranges than the cache keeps: it is emptied, never wrong. */
+    @Test
+    void aCacheFullOfRangesStillAnswersLikeAFreshIndex() {
+        SpatialIndex index = new SpatialIndex(800, 800, 800);
+        long[] first = {0, 0, 0, 150, 150, 150};
+        index.add(0, first);
+        List<long[]> queries = new ArrayList<>();
+        for (long x = 0; x < 8; x++) {
+            for (long y = 0; y < 8; y++) {
+                for (long z = 0; z < 3; z++) {
+                    long[] query = {x * 100, y * 100, z * 100, x * 100 + 150, y * 100 + 150, z * 100 + 150};
+                    queries.add(query);
+                    query(index, query);
+                }
+            }
+        }
+        SpatialIndex fork = index.copy();
+        long[] inserted = {100, 100, 100, 180, 180, 180};
+        long[] forkInserted = {700, 100, 100, 780, 180, 180};
+        index.add(1, inserted);
+        fork.add(1, forkInserted);
+        SpatialIndex fresh = built(800, List.of(first, inserted));
+        SpatialIndex freshFork = built(800, List.of(first, forkInserted));
+        queries.add(inserted);
+        queries.add(forkInserted);
+        for (int round = 0; round < 2; round++) {
+            for (long[] query : queries) {
+                assertArrayEquals(query(fresh, query), query(index, query));
+                assertArrayEquals(query(freshFork, query), query(fork, query));
+            }
+        }
+    }
+
+    @Test
+    void cachedQueriesMatchFreshIndexesAfterDivergentForks() {
+        for (int seed = 0; seed < 5; seed++) {
+            DeterministicRandom random = new DeterministicRandom(seed);
+            SpatialIndex index = new SpatialIndex(800, 800, 800);
+            List<long[]> bounds = new ArrayList<>();
+            List<long[]> queries = new ArrayList<>();
+            for (int count = 0; count < 20; count++) {
+                queries.add(randomBound(random, 800));
+            }
+            for (int step = 0; step < 20; step++) {
+                for (long[] query : queries) {
+                    query(index, query);
+                }
+                SpatialIndex fork = index.copy();
+                long[] originalBound = randomBound(random, 800);
+                long[] forkBound = randomBound(random, 800);
+                fork.add(step, forkBound);
+                List<long[]> forkBounds = new ArrayList<>(bounds);
+                forkBounds.add(forkBound);
+                bounds.add(originalBound);
+                index.add(step, originalBound);
+                SpatialIndex fresh = built(800, bounds);
+                SpatialIndex freshFork = built(800, forkBounds);
+                for (long[] query : queries) {
+                    assertArrayEquals(query(fresh, query), query(index, query));
+                    assertArrayEquals(query(freshFork, query), query(fork, query));
+                }
+            }
+        }
+    }
+
     @Test
     void refusesASolidOutsideTheGrid() {
         SpatialIndex index = new SpatialIndex(LENGTH, WIDTH, HEIGHT);
@@ -99,6 +181,27 @@ class SpatialIndexTest {
                 Math.min(HEIGHT, z + 1 + seed % 7)});
         }
         return bounds;
+    }
+
+    private static int[] query(SpatialIndex index, long[] box) {
+        return index.query(box[0], box[1], box[2], box[3], box[4], box[5]);
+    }
+
+    private static SpatialIndex built(long side, List<long[]> bounds) {
+        SpatialIndex index = new SpatialIndex(side, side, side);
+        for (int solid = 0; solid < bounds.size(); solid++) {
+            index.add(solid, bounds.get(solid));
+        }
+        return index;
+    }
+
+    /** A box of positive size inside a cube of {@code side}. */
+    private static long[] randomBound(DeterministicRandom random, long side) {
+        long x = random.nextInt(side - 1);
+        long y = random.nextInt(side - 1);
+        long z = random.nextInt(side - 1);
+        return new long[] {x, y, z, x + 1 + random.nextInt(side - x - 1), y + 1 + random.nextInt(side - y - 1),
+            z + 1 + random.nextInt(side - z - 1)};
     }
 
     private static SpatialIndex indexOf(List<long[]> bounds) {

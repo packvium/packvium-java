@@ -40,7 +40,7 @@ public final class OperationalArtifact {
      * The engine's own name is deliberately not recorded: four correct builders naming
      * themselves would emit four different documents.
      */
-    public static final String SUITE_VERSION = "1.4.0";
+    public static final String SUITE_VERSION = "1.5.0";
 
     /** The deterministic part of {@code result.algorithm}; {@code duration_ms} is wall-clock time. */
     public static final List<String> SOLVER_FIELDS = List.of(
@@ -211,6 +211,21 @@ public final class OperationalArtifact {
         Map<String, Object> solver = new LinkedHashMap<>();
         SOLVER_FIELDS.forEach(name -> solver.put(name, frozen(record.get(name))));
         return Collections.unmodifiableMap(solver);
+    }
+
+    /**
+     * {@code exact} or {@code not_guaranteed}: the replay promise an artifact of this result would
+     * make, without building the artifact. O(1).
+     *
+     * @param result a JSON object
+     * @throws OperationalArtifactException {@code invalid_result} when the result is not an object
+     *     or its {@code algorithm} is malformed, as {@link #build} would refuse it
+     */
+    public static String replayLevel(Object result) {
+        if (!(result instanceof Map<?, ?> resultObject)) {
+            throw new OperationalArtifactException("invalid_result", "a result is a JSON object");
+        }
+        return (String) replay(solver(resultObject.get("algorithm"))).get("level");
     }
 
     /**

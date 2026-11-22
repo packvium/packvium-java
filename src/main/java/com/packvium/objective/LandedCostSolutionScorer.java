@@ -5,6 +5,7 @@ import com.packvium.config.PackingConfig;
 import com.packvium.domain.Container;
 import com.packvium.domain.PackedContainer;
 import com.packvium.domain.RateTable;
+import com.packvium.domain.UnratedWeightException;
 import com.packvium.unit.Weight;
 import java.util.List;
 import java.util.Optional;
@@ -51,6 +52,41 @@ public final class LandedCostSolutionScorer extends ShippingCostSolutionScorer {
         }
         return ObjectiveScore.of(base.component(0), landed, base.component(1), base.component(3),
                 base.component(4));
+    }
+
+    /**
+     * Both cost objectives price billed weight, so both need the divisor; and landed cost needs a
+     * tariff on every container. Both are static properties of the request, so the packer and the
+     * rebalancer refuse them before any search. There is no library-chosen default divisor.
+     */
+    public static void requirePriceableObjective(PackingConfig config, List<Container> containers) {
+        boolean priced = config.objective().equals("shipping_cost") || config.objective().equals(OBJECTIVE_NAME);
+        if (priced && config.dimensionalWeightDivisor().isEmpty()) {
+            throw new UnknownObjectiveException(
+                    "the " + config.objective() + " objective requires configuration.dimensional_weight_divisor");
+        }
+        if (!config.objective().equals(OBJECTIVE_NAME)) {
+            return;
+        }
+        for (Container container : containers) {
+            if (container.rateTable().isEmpty()) {
+                throw new UnknownObjectiveException("the lowest_landed_cost objective requires a rate_table on every "
+                        + "container; '" + container.id() + "' has none");
+            }
+        }
+    }
+
+    /**
+     * Returning a packing the tariff cannot price would quote a number the carrier never published.
+     * The refusal lives outside the scorer: throwing while comparing candidates would abort runs
+     * that have a shippable answer.
+     */
+    public static void requirePriceable(List<PackedContainer> containers, PackingConfig config) {
+        unpriceableContainer(containers, config).ifPresent(unpriceable -> {
+            throw new UnratedWeightException("container '" + unpriceable.containerId() + "' bills at "
+                    + unpriceable.billedGrams() + " g, above its rate table's last bracket ("
+                    + unpriceable.lastBracketG() + " g); the shipment has no published price");
+        });
     }
 
     /** The first container of a finished answer its tariff cannot price, if any. */

@@ -14,7 +14,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.4.0.jar examples/Serialization.java
+ *     java -cp target/packvium-1.5.0.jar examples/Serialization.java
  * </pre>
  *
  * <p>Everything the library can do is reachable over one JSON document, and that is not a
@@ -28,9 +28,9 @@ import java.util.Map;
  * <ul>
  *   <li>lengths and weights travel as <em>decimal strings</em>, never as floats, so "12 3/8 in"
  *       survives the trip intact (see Units.java for why that matters);
- *   <li>a field this engine has deliberately not implemented is refused by name, but a key the
- *       parser simply does not recognise is ignored. The last section shows both, and the
- *       refusal of a field this engine has caught up on through the guard's own test hook.
+ *   <li>a field this engine has deliberately not implemented yet is refused by name, never
+ *       quietly ignored -- but a key the parser does not recognise on an item <em>is</em> ignored.
+ *       The difference matters, and the last section shows both.
  * </ul>
  */
 public final class Serialization {
@@ -38,9 +38,12 @@ public final class Serialization {
     // A request is one JSON document. This one is the whole vocabulary in miniature: units,
     // solver configuration, items with rules, and a container with a carrier rate card.
     //
-    // `time_limit_ms` is there because an example must not change answer merely because the
-    // machine is busy: how many runners-up `top_k` finds is bounded by the wall clock unless a
-    // budget says otherwise. The value is a safety fuse, not a target.
+    // `alternatives` asks for up to two complete answers: the winner and one runner-up. A wall
+    // clock is a fact about the machine, not about the request: how many runners-up a
+    // clock-bounded search finds depends on how busy the host is. The effort budget counts work
+    // instead, so it stops at the same point on every machine, and the time limit is only a
+    // safety fuse far above what this needs. Reproducibility.java shows what happens when the
+    // clock does decide.
     // ---------------------------------------------------------------------------------------
     private static final String REQUEST = """
             {
@@ -50,9 +53,10 @@ public final class Serialization {
                 "dimensional_weight_divisor": 5000,
                 "dimensional_weight_length_unit": "cm",
                 "dimensional_weight_weight_unit": "kg",
-                "profile": "balanced",
+                "solver_profile": "balanced",
                 "seed": 42,
-                "top_k": 2,
+                "alternatives": 2,
+                "effort_budget": {"max_search_nodes": 20000},
                 "time_limit_ms": 60000
               },
               "items": [
@@ -111,27 +115,34 @@ public final class Serialization {
         System.out.print(prefix(prettyJson(firstPlacement), 320) + " ...\n");
 
         // -----------------------------------------------------------------------------------
-        // `top_k` asks for runners-up: real alternative arrangements, already scored and
-        // already validated. Two of them can share a score and still differ in geometry, so
-        // compare placements rather than scores when showing a human a choice.
+        // `alternatives` asks for runners-up. They are real alternative arrangements, already
+        // scored and already validated -- useful when you want to show a human a choice rather
+        // than a verdict. The count includes the winner, so `2` means at most one runner-up,
+        // and an empty list is normal: a search that found nothing else worth ranking says so.
         // -----------------------------------------------------------------------------------
+        // Two alternatives can share a score and still be different arrangements -- equal cost,
+        // different geometry. Compare their placements, not their scores, when showing a choice.
         List<Map<?, ?>> alternatives = objects(result.get("alternatives"));
         System.out.print("\nalternatives: " + alternatives.size() + "\n");
         for (Map<?, ?> alternative : alternatives) {
-            Map<?, ?> first = objects(objects(alternative.get("containers")).get(0).get("placements")).get(0);
-            Map<?, ?> x = (Map<?, ?>) ((Map<?, ?>) first.get("position")).get("x");
-            System.out.printf("   score %s  first placement %s at x=%s\n",
-                    JsonWriter.write(alternative.get("score")), first.get("item_id"), x.get("value"));
+            List<List<Object>> positions = new ArrayList<>();
+            for (Map<?, ?> container : objects(alternative.get("containers"))) {
+                for (Map<?, ?> placement : objects(container.get("placements"))) {
+                    Map<?, ?> x = (Map<?, ?>) ((Map<?, ?>) placement.get("position")).get("x");
+                    positions.add(List.of(placement.get("item_id"), x.get("value")));
+                }
+            }
+            System.out.printf("   score %s  first two placements %s\n",
+                    JsonWriter.write(alternative.get("score")), JsonWriter.write(prefix(positions, 2)));
         }
 
         // -----------------------------------------------------------------------------------
         // What is refused, and what is not. The two look alike from the outside.
         //
-        // A key the parser does not recognise is *ignored*. Misspell `keep_upright` and you
-        // get a silently unrotated mug, not an error -- the strictness lives in the request
-        // JSON Schema, which sets `additionalProperties: false` and ships with the project
-        // rather than with this package. Validate against it if you want typo protection.
-        // See docs/SERIALIZATION.md.
+        // A key the parser does not recognise on an item is *ignored*. Misspell `keep_upright`
+        // and you get a silently rotatable mug, not an error. If typos in item fields matter to
+        // you, check keys against the field list in docs/PUBLIC-API.md before calling the
+        // engine.
         // -----------------------------------------------------------------------------------
         Map<String, Object> typo = withItem(request, 1, "keep_uprght", true);
         System.out.printf("\nmisspelled field: %s -- accepted; the misspelling is invisible to the parser,\n",
@@ -148,11 +159,9 @@ public final class Serialization {
             System.out.printf("unknown objective: %s\n", prefix(refusal.getMessage(), 100));
         }
 
-        // And a field this engine names as not-yet-implemented is refused explicitly, so a
-        // request written for a newer engine fails loudly instead of being half-honoured. The
-        // list below is the engine's own constant, by the scope each name appears in. Its one
-        // entry is `container.pallet_overhang_limit`, reserved in the schema at the 1.1.0
-        // contract freeze and refused by every engine until one implements it.
+        // And a field the schema reserves but this engine has not implemented yet is refused by
+        // name, so a request written for a newer engine fails loudly instead of being
+        // half-honoured. The list is the engine's own constant.
         UnsupportedFields current = UnsupportedFields.CURRENT;
         Map<String, List<String>> refused = new LinkedHashMap<>();
         refused.put("request", current.request());
@@ -163,29 +172,23 @@ public final class Serialization {
         System.out.printf("fields this engine refuses by name: %s\n",
                 refused.isEmpty() ? "none" : JsonWriter.write(refused));
 
-        // Caught up is the right state and a poor demonstration, so the guard takes its lists
-        // as parameters -- the same hook its own tests use. Passing the value retired
-        // shows the refusal a caller still gets from an engine that is behind, and shows it
-        // naming the *value* rather than the field: `rigid_cuboid` is the default and is
-        // implemented, so a caller who spells the default out must be served, not refused.
-        Map<String, Object> behind = withItem(request, 0, "shape_type", "convex_hull");
-        UnsupportedFields behindOnHulls = new UnsupportedFields(
-                List.of(), List.of(), List.of(), List.of(), List.of("convex_hull"));
+        List<Object> overhanging = new ArrayList<>((List<?>) request.get("containers"));
+        overhanging.set(0, with((Map<?, ?>) overhanging.get(0), "pallet_overhang_limit",
+                Map.of("length", "50", "width", "50")));
         try {
-            behindOnHulls.reject(behind);
+            RequestPacker.pack(with(request, "containers", overhanging));
         } catch (UnsupportedFeatureException refusal) {
-            System.out.printf("  what one looks like, from an engine that is not: %s\n",
-                    prefix(refusal.getMessage(), 110));
+            System.out.printf("  sending one anyway: %s\n", prefix(refusal.getMessage(), 100));
         }
 
         // -----------------------------------------------------------------------------------
         // The same document drives the command line, which reads a request on stdin and writes
-        // a result on stdout -- which is how the cross-language conformance harness talks to
-        // every engine:
+        // a result on stdout -- which is how the engines are checked against each other, and how
+        // you would call this from a language with no binding yet:
         //
-        //     echo '<request json>' | java -jar target/packvium-1.4.0.jar
+        //     echo '<request json>' | java -jar target/packvium-1.5.0.jar
         // -----------------------------------------------------------------------------------
-        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.4.0.jar\n");
+        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.5.0.jar\n");
     }
 
     private static List<Map<?, ?>> objects(Object list) {
@@ -209,6 +212,10 @@ public final class Serialization {
 
     private static String prefix(String text, int length) {
         return text.substring(0, Math.min(length, text.length()));
+    }
+
+    private static <T> List<T> prefix(List<T> values, int length) {
+        return values.subList(0, Math.min(length, values.size()));
     }
 
     /** Four-space indented JSON, the layout most JSON tools print by default. */
