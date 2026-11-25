@@ -8,7 +8,7 @@ import java.util.List;
  * <p>A {@code flat_bag} container is two sheets of usable flat size L x W filled to at most
  * thickness H, its inner dimensions. With a, b and c the largest envelope x2, y2 and z2 over its
  * placements, measured from the container origin, a packing is admitted only when the ordinary
- * boundary holds and a + c <= L and b + c <= W. Integer additions and comparisons, so every
+ * boundary holds and {@code a + c <= L} and {@code b + c <= W}. Integer additions and comparisons, so every
  * check here is O(1). The extents only grow as boxes are added, so a verdict reached for a
  * candidate never flips when more items follow.
  */

@@ -117,8 +117,8 @@ public final class AxleLoad {
     }
 
     /**
-     * Whether one item, alone in an empty container, has an x-origin that overloads neither axle
-     *. Each limit is linear in the item's doubled centre, so the feasible origins form
+     * Whether one item, alone in an empty container, has an x-origin that overloads neither axle.
+     * Each limit is linear in the item's doubled centre, so the feasible origins form
      * one interval whose two ends {@link #axleBalancedOrigins} gives exactly. O(1). A statement
      * about an empty container, not a proof: a counterweight behind the rear axle can relieve the
      * front one.

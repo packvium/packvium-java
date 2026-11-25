@@ -11,8 +11,8 @@ import java.util.Optional;
  * Rejects a placement that would bury an item due off at an earlier stop.
  *
  * <p>A no-op unless some item declares a {@code stopIndex}: route enforcement is opt-in, so a
- * request that never mentions a route sees no new rejection code and no behaviour change
- *. O(n log n + E) per candidate for the graph, O(n^2) worst case for the
+ * request that never mentions a route sees no new rejection code and no behaviour change.
+ * O(n log n + E) per candidate for the graph, O(n^2) worst case for the
  * ancestor sets.
  */
 public final class RouteOrderConstraint implements PlacementConstraint {

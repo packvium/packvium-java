@@ -93,9 +93,9 @@ public record PackedContainer(
     }
 
     /**
-     * The largest envelope x2, y2 and z2 of its placements: a flat bag's conformed package
-     *, or a made-to-measure box's extent before it is rounded onto the machine grid
-     *; empty for any other container. O(p).
+     * The largest envelope x2, y2 and z2 of its placements: a flat bag's conformed package,
+     * or a made-to-measure box's extent before it is rounded onto the machine grid;
+     * empty for any other container. O(p).
      */
     public Optional<Dimensions> achievedDimensions() {
         if (!container.isFlatBag() && container.madeToMeasure().isEmpty()) {

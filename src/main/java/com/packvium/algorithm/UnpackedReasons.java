@@ -64,8 +64,8 @@ final class UnpackedReasons {
     }
 
     /**
-     * The container limit that left {@code item} out, for the no_feasible_placement fallback
-     *, or empty when no limit explains it.
+     * The container limit that left {@code item} out, for the no_feasible_placement fallback,
+     * or empty when no limit explains it.
      *
      * <p>Only containers that admit the item on every structural count -- a fitting rotation, its
      * weight, its eligibility tags -- are asked. When an axle refuses the item alone in every one of

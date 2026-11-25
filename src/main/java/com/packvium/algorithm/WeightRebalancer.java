@@ -59,8 +59,8 @@ public final class WeightRebalancer {
             List<UnpackedItem> unpacked, PackingConfig config, int maxMoves, long timeLimitMs) {
         LandedCostSolutionScorer.requirePriceableObjective(config, request.containers());
         // Under lowest_landed_cost an input that already bills past a rate table's last bracket has
-        // no published price to preserve: it is refused in Packer's words rather than shuffled
-        // (review). A no-op for every other objective.
+        // no published price to preserve: it is refused in Packer's words rather than shuffled.
+        // A no-op for every other objective.
         LandedCostSolutionScorer.requirePriceable(containers, config);
         IndependentSolutionValidator validator = new IndependentSolutionValidator();
         Deadline deadline = Deadline.ofMilliseconds(timeLimitMs);
