@@ -62,7 +62,7 @@ public record PlacementLock(int containerIndex, String itemType, String orientat
         return Rotation.valueOf(orientation);
     }
 
-    /** {@code LWH@(0, 0, 0)}, the reference's spelling of a lock in its diagnostics. */
+    /** {@code LWH@(0, 0, 0)}, the Python engine's spelling of a lock in its diagnostics. */
     String describe() {
         return orientation + "@" + PythonRepr.integers(positionTicks);
     }
@@ -79,7 +79,7 @@ public record PlacementLock(int containerIndex, String itemType, String orientat
             positionTicks = List.copyOf(positionTicks);
         }
 
-        /** {@code ('LWH', (0, 0, 0))}, the reference's spelling of a slot. */
+        /** {@code ('LWH', (0, 0, 0))}, the Python engine's spelling of a slot. */
         String describe() {
             return "(" + PythonRepr.string(orientation) + ", " + PythonRepr.integers(positionTicks) + ")";
         }

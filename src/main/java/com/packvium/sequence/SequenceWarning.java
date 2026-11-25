@@ -29,7 +29,7 @@ public record SequenceWarning(String code, long index, String messageKey, Map<St
     }
 
     /**
-     * The reference engine's {@code ksort}: canonical decimal keys become integers there and
+     * PHP's {@code ksort}: canonical decimal keys become integers there and
      * compare numerically; every other pair compares as bytes.
      */
     private static int compareKeys(String left, String right) {

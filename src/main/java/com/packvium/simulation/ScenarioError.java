@@ -4,7 +4,7 @@ package com.packvium.simulation;
 public class ScenarioError extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
-    /** @param message the reason, worded as the reference engine words it */
+    /** @param message the reason, worded as the Python engine words it */
     public ScenarioError(String message) {
         super(message);
     }

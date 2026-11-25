@@ -12,21 +12,25 @@ import com.packvium.unit.Weight;
 import java.util.List;
 
 /**
- * Objectives: six ways to be "best", and the scenes where they disagree.
+ * Objectives: six of the seven objectives (all but {@code maximum_volume}), and the loads where
+ * they disagree.
  *
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Objectives.java
+ *     java -cp target/packvium-1.6.0.jar examples/Objectives.java
  * </pre>
  *
  * <p>Every solve returns the arrangement that scores best -- but "best" is a choice, and it is
  * the one setting most likely to make the library look wrong when it is merely answering a
- * different question than you meant to ask. This example builds scenes where two objectives
+ * different question than you meant to ask. This example builds loads where two objectives
  * genuinely pick different containers, so the difference is visible rather than asserted.
  *
- * <p>The score is always a lexicographic vector of exact integers, never a float, and its first
- * key is always the unpacked count: no objective will ever leave an item behind to save money.
+ * <p>The score is always a lexicographic vector of exact integers, never a float. For the six
+ * objectives shown here its first key is the unpacked count, so none of them will leave an item
+ * behind to save money. {@code maximum_volume} puts the share of the requested volume left behind
+ * first instead, so it can prefer fewer, larger items; a complete answer still beats every
+ * incomplete one.
  * Every line below prints the whole vector, so each objective's key order is on the page.
  */
 public final class Objectives {

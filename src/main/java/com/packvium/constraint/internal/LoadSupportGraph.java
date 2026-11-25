@@ -5,6 +5,7 @@ import com.packvium.constraint.ContactGraph;
 import com.packvium.constraint.LoadUnit;
 import com.packvium.constraint.Violation;
 import com.packvium.domain.AxisAlignedBox;
+import com.packvium.domain.Item;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.Placement;
 import com.packvium.support.SortKey;
@@ -253,16 +254,41 @@ public final class LoadSupportGraph {
         return nested ? nestedChildren.get(index) : face.children(index);
     }
 
-    /** A direct-support edge may never originate at a non-stackable item. */
+    /**
+     * The first direct-support edge at the candidate its lower item refuses, or empty. Supporters
+     * ascending, then children ascending. {@code non_stackable} is tested before the stacking-group
+     * rule on every edge, so a layout invalid before keeps its code; the group test rides
+     * this same walk, one lookup per edge and no pass of its own.
+     */
     public Optional<Violation> nonStackableFailure(List<Placement> placements, ItemInstance item, int candidateIndex) {
+        Optional<String> upperGroup = item.item().stackingGroup();
         for (ContactEdge edge : supporters(candidateIndex)) {
-            Placement supporter = placements.get(edge.index());
-            if (!supporter.instance().item().stackable()) {
-                return Optional.of(new Violation("non_stackable", supporter.instance().item().id()));
+            Item lower = placements.get(edge.index()).instance().item();
+            Optional<String> code = stackingRefusal(lower, upperGroup);
+            if (code.isPresent()) {
+                return Optional.of(new Violation(code.get(), lower.id()));
             }
         }
-        if (!item.item().stackable() && !children(candidateIndex).isEmpty()) {
-            return Optional.of(new Violation("non_stackable", item.item().id()));
+        Item lower = item.item();
+        if (lower.stackable() && lower.acceptsStackingGroups().isEmpty()) {
+            return Optional.empty();
+        }
+        for (int child : children(candidateIndex)) {
+            Optional<String> code = stackingRefusal(lower, placements.get(child).instance().item().stackingGroup());
+            if (code.isPresent()) {
+                return Optional.of(new Violation(code.get(), lower.id()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Why {@code lower} refuses an item of {@code upperGroup} resting directly on it. O(1). */
+    private static Optional<String> stackingRefusal(Item lower, Optional<String> upperGroup) {
+        if (!lower.stackable()) {
+            return Optional.of("non_stackable");
+        }
+        if (!lower.acceptsStackingGroup(upperGroup)) {
+            return Optional.of("stacking_group_incompatible");
         }
         return Optional.empty();
     }

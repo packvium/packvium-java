@@ -14,14 +14,12 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Serialization.java
+ *     java -cp target/packvium-1.6.0.jar examples/Serialization.java
  * </pre>
  *
  * <p>Everything the library can do is reachable over one JSON document, and that is not a
- * convenience wrapper -- it is the contract four independent implementations are held to. The
- * PHP, Python, Rust and JavaScript engines read this exact shape and are checked against each
- * other on a shared fixture corpus, so a request you build here is a request you can hand to
- * any of them.
+ * convenience wrapper -- it is the contract every Packvium engine reads, in this exact shape, so a
+ * request you build here is a request you can hand to any of them.
  *
  * <p>Two consequences worth knowing:
  *
@@ -141,8 +139,7 @@ public final class Serialization {
         //
         // A key the parser does not recognise on an item is *ignored*. Misspell `keep_upright`
         // and you get a silently rotatable mug, not an error. If typos in item fields matter to
-        // you, check keys against the field list in docs/PUBLIC-API.md before calling the
-        // engine.
+        // you, check keys against the request schema's field list before calling the engine.
         // -----------------------------------------------------------------------------------
         Map<String, Object> typo = withItem(request, 1, "keep_uprght", true);
         System.out.printf("\nmisspelled field: %s -- accepted; the misspelling is invisible to the parser,\n",
@@ -186,9 +183,9 @@ public final class Serialization {
         // a result on stdout -- which is how the engines are checked against each other, and how
         // you would call this from a language with no binding yet:
         //
-        //     echo '<request json>' | java -jar target/packvium-1.5.0.jar
+        //     echo '<request json>' | java -jar target/packvium-1.6.0.jar
         // -----------------------------------------------------------------------------------
-        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.5.0.jar\n");
+        System.out.print("\nthe CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.6.0.jar\n");
     }
 
     private static List<Map<?, ?>> objects(Object list) {

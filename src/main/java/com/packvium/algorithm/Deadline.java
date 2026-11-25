@@ -1,6 +1,7 @@
 package com.packvium.algorithm;
 
 import com.packvium.config.EffortBudget;
+import java.util.Optional;
 import java.util.function.LongSupplier;
 
 /**
@@ -50,6 +51,18 @@ public final class Deadline {
 
     public boolean expired() {
         return effortExceeded() || remainingNs() <= 0;
+    }
+
+    /**
+     * The {@code searchNodesExpanded} of {@code counted} at which the attached budget stops a
+     * search counting nodes there; empty when counting there can never trip it -- no budget, no
+     * node bound, or a budget that reads another {@code SearchStats}.
+     */
+    Optional<Long> searchNodeCeiling(SearchStats counted) {
+        if (effortBudget == null || stats != counted) {
+            return Optional.empty();
+        }
+        return effortBudget.maxSearchNodes();
     }
 
     public Deadline slice(long parts) {

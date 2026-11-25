@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** The wire form of a packing result; key order follows the reference engines' output. */
+/** The wire form of a packing result; key order follows the Python engine's output. */
 public final class ResultEncoder {
     private final String lengthUnit;
     private final String weightUnit;
@@ -76,6 +76,17 @@ public final class ResultEncoder {
         out.put("container_type", container.id());
         out.put("inner_dimensions", container.innerDimensions().toMap(lengthUnit));
         out.put("outer_dimensions", container.outerDimensions().orElse(container.innerDimensions()).toMap(lengthUnit));
+        // Present exactly when the container conforms to its contents, so a rigid
+        // container's bytes are unchanged.
+        packed.achievedDimensions().ifPresent(achieved -> out.put("achieved_dimensions", achieved.toMap(lengthUnit)));
+        // A packed made-to-measure container is the fabricated box, so its own price and tare are
+        // the box's; absent for every other container.
+        if (container.madeToMeasure().isPresent()) {
+            Map<String, Object> box = new LinkedHashMap<>();
+            box.put("cost_minor", container.costMinor());
+            box.put("tare_weight", container.tareWeight().toMap(weightUnit));
+            out.put("made_to_measure", box);
+        }
         out.put("payload_weight", packed.payloadWeight().toMap(weightUnit));
         out.put("gross_weight", packed.grossWeight().toMap(weightUnit));
         out.put("used_volume_ticks3", packed.usedVolume().toString());

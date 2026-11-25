@@ -4,6 +4,57 @@ What changed in `com.packvium:packvium` on Maven Central, release by release. Th
 follows [Keep a Changelog](https://keepachangelog.com/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0]
+
+Corresponds to Packvium 1.6.0. Python, PHP, Java, .NET and Go return identical results at the
+same version; Rust and JavaScript return a valid answer at or above the objective floor. A
+request that uses none of the new fields keeps its meaning; `fast` and `balanced` may now answer
+better (see *Changed*).
+
+### Added
+
+- Made-to-measure containers: `Container.Builder.madeToMeasure(new MadeToMeasure(minimum,
+  increment, costPerSquareMetreMinor, tarePerSquareMetre, outerAllowance))`, and
+  `container.made_to_measure` in JSON. The declared inner dimensions are the largest box the
+  machine cuts. Each trial packs into up to four envelopes derived from the items, smallest
+  first, and the packed container is the box that ships, its size rounded up onto the machine
+  grid and priced and weighed by its board. The result reports `achieved_dimensions` and
+  `made_to_measure.{cost_minor, tare_weight}`. Axles, obstacles, a void-fill reserve and fixed
+  placements in such a container are refused as `unsupported_feature`.
+- Flat bags: `Container.Builder.deformableBoundary("flat_bag")`, and
+  `container.deformable_boundary: {"kind": "flat_bag"}`. A packing is admitted only when length
+  plus thickness and width plus thickness of the load fit the bag; dimensional weight is billed
+  from the load's `achieved_dimensions`.
+- Stacking groups: `Item.Builder.stackingGroup(...)` and `acceptsStackingGroups(...)`, and
+  `item.stacking_group` and `item.accepts_stacking_groups`. An item may rest directly on another
+  only when the lower one accepts its group; an item with no group rests on no constrained one,
+  and `stackable(false)` still wins. A refusal is `stacking_group_incompatible`.
+- The `maximum_volume` objective (`MaximumVolumeSolutionScorer`): the share of the requested
+  volume left behind ranks ahead of the number of pieces. The beam, block, exact and plan
+  searches rank their partial states the same way.
+- A result whose placements rest on nothing above the floor ends its `warnings`, and each
+  alternative's, with `unsupported_placements: N placement(s) rest on nothing above the
+  container floor; set configuration.minimum_support_ratio above 0 to require support`. No
+  answer changes.
+
+### Changed
+
+- `fast` and `balanced` try the homogeneous-block solver as one more start on multi-type loads,
+  capped at 100 000 lattice nodes, and keep its answer only when it is strictly better than
+  every start of their own by the request's objective. Answers can therefore change, never for
+  the worse.
+- An unpacked item that a fresh container would take, but none is left, reports
+  `container_inventory_exhausted`; one that overloads an axle wherever it stands alone reports
+  `axle_overloaded`. Both used to fall back to `no_feasible_placement`.
+- `quality` tries, for each item type, the best order with that type packed last, and then
+  refines the best order with the beam. When one of those type-last orders wins, the refinement
+  now keeps up to 4 candidates per item and up to 4 container plans, instead of the single
+  candidate it used in 1.5.0, which only repeated the order it was given.
+- In `quality`, the beam's bound on what still fits and the estimate of how many containers a
+  plan still needs count a `convex_hull` item by the volume of its own solid, not by its box, so
+  two wedges that share a crate are no longer assumed to need room for two boxes.
+- Because of both changes, **a `quality` answer can differ from Java 1.5.0**.
+
 ## [1.5.0]
 
 Answers every request the way Packvium 1.5.0 does in the other languages, checked byte for

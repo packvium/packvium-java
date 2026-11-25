@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * The PHP value semantics the reference port's policy parsing exposes on the wire.
+ * The PHP value semantics the PHP engine's policy parsing exposes on the wire.
  *
  * <p>PHP decodes a JSON list and a JSON object into one array type, so a list is accepted where
  * an object belongs and its indices count as keys; sorted key lists in messages use PHP's

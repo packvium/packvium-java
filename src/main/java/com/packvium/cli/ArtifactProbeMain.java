@@ -16,13 +16,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The batch probe conformance/artifacts/run.py drives, answering the protocol of the tag's
- * {@code probe.php}: stdin is a JSON list of cases, stdout one JSON line per case, in order,
- * {@code {"csv": ..., "error": code-or-null, "html": ..., "json": ...}}.
+ * A test harness for cross-engine conformance; not a supported interface.
  *
- * <p>A case of kind {@code export} names a stored artifact ({@code artifact_path}); any other
+ * <p>It answers operational-artifact cases in batch: stdin is a JSON list of cases, stdout one
+ * JSON line per case, in order, {@code {"csv": ..., "error": code-or-null, "html": ...,
+ * "json": ...}}. A case of kind {@code export} names a stored artifact ({@code artifact_path}); any other
  * case names a request, a result and loading orders keyed by container index as a string. A
- * refusal is an outcome, not a failure, so the probe exits 0 unless it cannot run at all. Each
+ * refusal is an outcome, not a failure, so the harness exits 0 unless it cannot run at all. Each
  * line is written in canonical form, which escapes every newline the exports hold.
  */
 public final class ArtifactProbeMain {

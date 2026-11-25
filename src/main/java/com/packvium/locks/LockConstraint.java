@@ -31,7 +31,7 @@ import java.util.Set;
  *
  * <p>Complexity: O(L) per candidate for L locks naming the item's type, plus one O(P) walk of the
  * container's placements when such a lock exists -- the walk the support and overlap rules already
- * make, so the per-candidate bound in docs/ALGORITHMS-AND-COMPLEXITY.md is unchanged. A request
+ * make, so the per-candidate bound of the candidate search is unchanged. A request
  * with no locks never constructs this constraint.
  */
 final class LockConstraint implements PlacementConstraint {

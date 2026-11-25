@@ -1,6 +1,7 @@
 package com.packvium.domain;
 
 import com.packvium.unit.Weight;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,7 +24,9 @@ public record Container(
         Optional<AxlePair> axles,
         Optional<RateTable> rateTable,
         List<String> accessDirections,
-        List<Placement> preloaded) {
+        List<Placement> preloaded,
+        Optional<String> deformableBoundary,
+        Optional<MadeToMeasure> madeToMeasure) {
 
     /**
      * {@code accessDirections} are the walls this container can be unloaded through.
@@ -35,7 +38,12 @@ public record Container(
      * <p>{@code preloaded}: items already in this one container instance before search starts.
      * Set only by the orchestrator, on the instance a request's {@code fixed_placements} name, so
      * every solver's {@code ContainerState} starts from them without knowing they exist; a packed
-     * result carries the container with this emptied again (docs/PLAN-REVISIONS.md).
+     * result carries the container with this emptied again.
+     *
+     * <p>{@code deformableBoundary}: {@code "flat_bag"} makes this a flexible bag whose package
+     * conforms to its contents ({@link FlatBag}). {@code madeToMeasure}: cut to measure by
+     * an on-demand box machine whose largest box is {@code innerDimensions}; a packed
+     * result carries the fabricated box instead.
      */
     public Container {
         preloaded = List.copyOf(preloaded);
@@ -46,6 +54,11 @@ public record Container(
         if (id.isEmpty()) {
             throw new IllegalArgumentException("container id is required");
         }
+        if (deformableBoundary.isPresent()) {
+            requireBagFields(deformableBoundary.get(), obstacles, axles, accessDirections, maxStackDensity,
+                    outerDimensions, voidFillReserveRatio);
+        }
+        madeToMeasure.ifPresent(machine -> machine.admits(Sides.of(innerDimensions)));
         if (quantity.isPresent() && quantity.get() <= 0) {
             throw new IllegalArgumentException("container quantity must be positive");
         }
@@ -73,7 +86,68 @@ public record Container(
     public Container withPreloaded(List<Placement> placements) {
         return new Container(id, innerDimensions, outerDimensions, tareWeight, maxPayload, costMinor, quantity,
                 obstacles, tags, maxItems, metadata, voidFillReserveRatio, tagLimits, maxStackDensity, axles,
-                rateTable, accessDirections, placements);
+                rateTable, accessDirections, placements, deformableBoundary, madeToMeasure);
+    }
+
+    public boolean isFlatBag() {
+        return deformableBoundary.isPresent();
+    }
+
+    /** The declared container solved inside {@code rung}: same id, everything else unchanged. */
+    public Container withEnvelope(Sides rung) {
+        return resized(rung.toDimensions(), outerDimensions, costMinor, tareWeight);
+    }
+
+    /**
+     * The box cut for an achieved extent: equal to this declared machine except its size, outer
+     * size, price and tare. O(1). Containment is a theorem, not a check: every placement lies
+     * inside {@code achieved}, and the grid never rounds below it or past the maximum.
+     */
+    public Container fabricate(Sides achieved) {
+        MadeToMeasure machine = madeToMeasure.orElseThrow(
+                () -> new IllegalStateException("container " + id + " is not made to measure"));
+        long[] sides = new long[3];
+        long[] outer = new long[3];
+        for (int axis = 0; axis < 3; axis++) {
+            sides[axis] = machine.grid(axis, achieved.get(axis));
+            if (sides[axis] > Sides.of(innerDimensions).get(axis)) {
+                throw new IllegalStateException("fabricated box exceeds the machine");
+            }
+            outer[axis] = Math.addExact(sides[axis], machine.outerAllowance().get(axis));
+        }
+        Sides box = new Sides(sides[0], sides[1], sides[2]);
+        return resized(box.toDimensions(), Optional.of(Dimensions.ofTicks(outer[0], outer[1], outer[2])),
+                machine.boxCostMinor(costMinor, box), new Weight(machine.boxTareTicks(tareWeight.ticks(), box)));
+    }
+
+    private Container resized(Dimensions inner, Optional<Dimensions> outer, long cost, Weight tare) {
+        return new Container(id, inner, outer, tare, maxPayload, cost, quantity, obstacles, tags, maxItems, metadata,
+                voidFillReserveRatio, tagLimits, maxStackDensity, axles, rateTable, accessDirections, preloaded,
+                deformableBoundary, madeToMeasure);
+    }
+
+    /**
+     * A bag has no walls, floor plan or chassis for a wall-anchored field to refer to, so those
+     * fields are refused rather than read against a frame that moves with its contents.
+     */
+    private static void requireBagFields(String kind, List<Obstacle> obstacles, Optional<AxlePair> axles,
+            List<String> accessDirections, Optional<Weight> maxStackDensity, Optional<Dimensions> outerDimensions,
+            double voidFillReserveRatio) {
+        if (!FlatBag.KINDS.contains(kind)) {
+            throw new IllegalArgumentException("unknown deformable_boundary kind '" + kind + "'");
+        }
+        Map<String, Boolean> present = new LinkedHashMap<>();
+        present.put("obstacles", !obstacles.isEmpty());
+        present.put("axles", axles.isPresent());
+        present.put("access_directions", !accessDirections.isEmpty());
+        present.put("max_stack_density", maxStackDensity.isPresent());
+        present.put("outer_dimensions", outerDimensions.isPresent());
+        present.put("void_fill_reserve_ratio", voidFillReserveRatio > 0);
+        for (Map.Entry<String, Boolean> field : present.entrySet()) {
+            if (field.getValue()) {
+                throw new IllegalArgumentException(field.getKey() + " cannot be combined with deformable_boundary");
+            }
+        }
     }
 
     public static Builder builder(String id, Dimensions innerDimensions) {
@@ -128,6 +202,8 @@ public record Container(
         private AxlePair axles;
         private RateTable rateTable;
         private List<String> accessDirections = List.of();
+        private String deformableBoundary;
+        private MadeToMeasure madeToMeasure;
 
         private Builder(String id, Dimensions innerDimensions) {
             this.id = id;
@@ -209,12 +285,23 @@ public record Container(
             return this;
         }
 
+        public Builder deformableBoundary(String kind) {
+            deformableBoundary = kind;
+            return this;
+        }
+
+        public Builder madeToMeasure(MadeToMeasure value) {
+            madeToMeasure = value;
+            return this;
+        }
+
         public Container build() {
             return new Container(id, innerDimensions, Optional.ofNullable(outerDimensions), tareWeight,
                     Optional.ofNullable(maxPayload), costMinor, Optional.ofNullable(quantity), obstacles, tags,
                     Optional.ofNullable(maxItems), metadata, voidFillReserveRatio, tagLimits,
                     Optional.ofNullable(maxStackDensity), Optional.ofNullable(axles),
-                    Optional.ofNullable(rateTable), accessDirections, List.of());
+                    Optional.ofNullable(rateTable), accessDirections, List.of(), Optional.ofNullable(deformableBoundary),
+                    Optional.ofNullable(madeToMeasure));
         }
     }
 }

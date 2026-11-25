@@ -58,7 +58,7 @@ public final class ContactGraph {
             childLists.add(new ArrayList<>());
         }
         // A single global cell size, not one derived per level from that level's own
-        // candidates: a querying box can be any size in this scene, and ContactLevelIndex is
+        // candidates: a querying box can be any size in this layout, and ContactLevelIndex is
         // only correct when its cell is at least as large as every box it will ever index or
         // be queried with.
         long cellSize = Math.max(1, cellHint);

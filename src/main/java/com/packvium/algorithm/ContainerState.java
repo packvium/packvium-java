@@ -3,6 +3,7 @@ package com.packvium.algorithm;
 import com.packvium.constraint.VolumeReserve;
 import com.packvium.domain.AxisAlignedBox;
 import com.packvium.domain.Container;
+import com.packvium.domain.Dimensions;
 import com.packvium.domain.HullShape;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.LatticeSummary;
@@ -44,6 +45,9 @@ public final class ContainerState {
     public boolean stackSensitive;
     public boolean routeSensitive;
     public boolean compressionSensitive;
+    /** Largest envelope x2 and y2 so far; with {@code maxZ}, a flat bag's running extents. */
+    public long maxX;
+    public long maxY;
     public long maxZ;
     public SpatialIndex index;
     /** Set instead of filling {@link #placements} when the grid's lattice fast path applies. */
@@ -86,7 +90,11 @@ public final class ContainerState {
     }
 
     private ContainerState(ContainerState source) {
-        container = source.container;
+        this(source, source.container);
+    }
+
+    private ContainerState(ContainerState source, Container container) {
+        this.container = container;
         sequence = source.sequence;
         placements = new ArrayList<>(source.placements);
         points = new LinkedHashSet<>(source.points);
@@ -100,16 +108,39 @@ public final class ContainerState {
         stackSensitive = source.stackSensitive;
         routeSensitive = source.routeSensitive;
         compressionSensitive = source.compressionSensitive;
+        maxX = source.maxX;
+        maxY = source.maxY;
         maxZ = source.maxZ;
         index = source.index.copy();
         latticeSummary = source.latticeSummary;
         latticeItems = source.latticeItems;
-        usableVolume = source.usableVolume;
+        usableVolume = container == source.container ? source.usableVolume : null;
     }
 
     /** A fork for a search branch; the constructor's point seeding is not repeated. */
     public ContainerState copy() {
         return new ContainerState(this);
+    }
+
+    /**
+     * This state as a trial of another container of the same contents: a made-to-measure rung
+     * committed as the box cut for it. Only read after the trial ends, so the candidate
+     * points and index sized for the rung are never searched again.
+     */
+    public ContainerState withContainer(Container replacement) {
+        return new ContainerState(this, replacement);
+    }
+
+    /**
+     * What a carrier measures for this container as filled: a flat bag's running extents (empty
+     * for an empty bag, which bills nothing by volume), else the declared outer size, else the
+     * inner size. O(1).
+     */
+    public Optional<Dimensions> billedDimensions() {
+        if (container.isFlatBag()) {
+            return placements.isEmpty() ? Optional.empty() : Optional.of(Dimensions.ofTicks(maxX, maxY, maxZ));
+        }
+        return Optional.of(container.outerDimensions().orElse(container.innerDimensions()));
     }
 
     /** Void-fill-reserve headroom; depends only on the container, so it is computed once. */
@@ -181,6 +212,8 @@ public final class ContainerState {
         payloadTicks = Math.addExact(payloadTicks, placement.instance().weight().ticks());
         stackSensitive = stackSensitive || placement.instance().item().isStackSensitive();
         routeSensitive = routeSensitive || placement.instance().item().stopIndex().isPresent();
+        maxX = Math.max(maxX, box.x2());
+        maxY = Math.max(maxY, box.y2());
         maxZ = Math.max(maxZ, box.z2());
     }
 

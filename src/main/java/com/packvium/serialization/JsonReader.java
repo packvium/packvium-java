@@ -14,7 +14,7 @@ import java.util.Map;
  * <p>Integers stay exact ({@link Long}, or {@link BigInteger} past its range); any other number
  * is a {@link BigDecimal}, never a double, so a measure can refuse it instead of rounding it.
  * Objects keep key order, and a repeated key keeps its first position with its last value,
- * as the reference engines' decoders do. O(n) in the input length.
+ * as the Python and PHP decoders do. O(n) in the input length.
  */
 public final class JsonReader {
     private static final int MAX_DEPTH = 512;

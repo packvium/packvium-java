@@ -35,6 +35,7 @@ public final class ObjectiveRegistry {
         named.put("lowest_landed_cost", LandedCostSolutionScorer::fromConfig);
         named.put("open_dimension_height", config -> new OpenDimensionSolutionScorer());
         named.put("maximum_value", config -> new MaximumValueSolutionScorer());
+        named.put("maximum_volume", config -> new MaximumVolumeSolutionScorer());
         return Collections.unmodifiableMap(named);
     }
 }

@@ -33,7 +33,9 @@ public record Item(
         ShapeType shapeType,
         Optional<List<Vertex>> hullVertices,
         Optional<Long> compressionRatioPpm,
-        Optional<Long> maxCompressionPressureKpa) {
+        Optional<Long> maxCompressionPressureKpa,
+        Optional<String> stackingGroup,
+        List<String> acceptsStackingGroups) {
 
     /**
      * The largest {@code stop_index} every engine can carry identically. JavaScript holds
@@ -47,6 +49,10 @@ public record Item(
         tags = Immutables.distinct(tags);
         incompatibleTags = Immutables.distinct(incompatibleTags);
         eligibleContainerTags = Immutables.distinct(eligibleContainerTags);
+        // Which stacking class this item belongs to, and which classes it may carry directly on
+        // its top face. An empty list is unconstrained, like tags; a non-empty one is
+        // closed, so an item with no class rests on no constrained item.
+        acceptsStackingGroups = Immutables.distinct(acceptsStackingGroups);
         metadata = Immutables.orderedMap(metadata);
         requireScalarRules(id, quantity, minimumSupportRatio, maxStackedItems, groundContactRule);
         requireRouteAndValue(dimensions, nestingHeight, stopIndex, value);
@@ -64,8 +70,21 @@ public record Item(
      * compressible -- yields to it.
      */
     public boolean isStackSensitive() {
-        return !stackable || maxTopLoad.isPresent() || maxStackedItems.isPresent()
-                || maxCompressionPressureKpa.isPresent();
+        // A stacking group alone does not count: such an item is refused only by a constrained
+        // item beneath it, which already switched the graph on.
+        return !stackable || !acceptsStackingGroups.isEmpty() || maxTopLoad.isPresent()
+                || maxStackedItems.isPresent() || maxCompressionPressureKpa.isPresent();
+    }
+
+    /** Whether an item of {@code upperGroup} may rest directly on this one, ignoring stackable. */
+    public boolean acceptsStackingGroup(Optional<String> upperGroup) {
+        return acceptsStackingGroups.isEmpty()
+                || upperGroup.isPresent() && acceptsStackingGroups.contains(upperGroup.get());
+    }
+
+    /** Whether a column of this one item type passes every stacking edge. */
+    public boolean carriesItself() {
+        return stackable && acceptsStackingGroup(stackingGroup);
     }
 
     public List<ItemInstance> instances() {
@@ -218,6 +237,8 @@ public record Item(
         private List<Vertex> hullVertices;
         private Long compressionRatioPpm;
         private Long maxCompressionPressureKpa;
+        private String stackingGroup;
+        private List<String> acceptsStackingGroups = List.of();
 
         private Builder(String id, Dimensions dimensions) {
             this.id = id;
@@ -339,6 +360,16 @@ public record Item(
             return this;
         }
 
+        public Builder stackingGroup(String value) {
+            stackingGroup = value;
+            return this;
+        }
+
+        public Builder acceptsStackingGroups(List<String> value) {
+            acceptsStackingGroups = value;
+            return this;
+        }
+
         public Item build() {
             return new Item(id, dimensions, weight, quantity, allowedRotations, keepUpright, stackable,
                     mustBeOnFloor, Optional.ofNullable(maxTopLoad), minimumSupportRatio,
@@ -346,7 +377,8 @@ public record Item(
                     priority, metadata, Optional.ofNullable(maxStackedItems), eligibleContainerTags,
                     Optional.ofNullable(nestingHeight), Optional.ofNullable(stopIndex), Optional.ofNullable(value),
                     shapeType, Optional.ofNullable(hullVertices), Optional.ofNullable(compressionRatioPpm),
-                    Optional.ofNullable(maxCompressionPressureKpa));
+                    Optional.ofNullable(maxCompressionPressureKpa), Optional.ofNullable(stackingGroup),
+                    acceptsStackingGroups);
         }
     }
 }

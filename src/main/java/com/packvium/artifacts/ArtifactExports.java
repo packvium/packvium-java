@@ -9,9 +9,9 @@ import java.util.Map;
 /**
  * JSON, CSV and print-ready work orders from an operational artifact.
  *
- * <p>Held byte-identical to {@code packvium.artifact_exports}. Each export is a pure function of
+ * <p>Byte-identical in every Packvium engine. Each export is a pure function of
  * the artifact: no solver, carrier, renderer or clock, so an export is replayable from the
- * artifact it came from and four engines emit the same bytes.
+ * artifact it came from and every engine emits the same bytes.
  *
  * <ul>
  *   <li>JSON is the artifact's RFC 8785 canonical form.
@@ -28,7 +28,7 @@ import java.util.Map;
  *
  * <p>Every export takes the artifact {@link OperationalArtifact#build} returned, or one read back
  * with {@link OperationalArtifact#parse}, and reads it <em>through its canonical form</em>, as the
- * reference does: an export is a function of the bytes four engines agree on, so a {@code 1.0}
+ * Python engine does: an export is a function of the bytes every engine agrees on, so a {@code 1.0}
  * a caller put in the tree is the {@code 1} every engine reads back. A member a v1 document
  * always has, missing or of the wrong JSON type, is {@code unknown_format}, as in PHP.
  * O(N) for an artifact of N values, plus the canonical form's key sorts.

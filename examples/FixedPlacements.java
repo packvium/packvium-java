@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/FixedPlacements.java
+ *     java -cp target/packvium-1.6.0.jar examples/FixedPlacements.java
  * </pre>
  *
  * <p>A trailer arrives at the depot with four pallets of returns already on board. They are staying

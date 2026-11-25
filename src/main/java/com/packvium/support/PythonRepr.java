@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
- * Python's {@code repr()} of the few value shapes the reference's diagnostics interpolate.
+ * Python's {@code repr()} of the few value shapes the Python engine's diagnostics interpolate.
  *
  * <p>The lock, Pareto, outcome and holdout modules exist only in Python at the tag, and their
  * error text is part of what this port reproduces: a caller matching on a message, or an operator

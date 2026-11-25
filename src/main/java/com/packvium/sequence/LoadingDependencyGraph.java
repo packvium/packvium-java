@@ -130,7 +130,7 @@ public final class LoadingDependencyGraph {
     }
 
     /**
-     * Independently replay a loading order (empty container to full scene) and throw at the
+     * Independently replay a loading order (empty container to full load) and throw at the
      * first step that is not feasible given only what has been loaded. O(n^2 * d).
      */
     public static void replayLoadingOrder(List<AxisAlignedBox> boxes, Dimensions container, List<Integer> order,
@@ -156,10 +156,10 @@ public final class LoadingDependencyGraph {
     }
 
     /**
-     * Reuse the exact constraint calculations proven for a finished scene against every loading
+     * Reuse the exact constraint calculations proven for a finished load against every loading
      * <em>prefix</em>, not only the final state, throwing at the first step whose prefix
      * violates a limit: identifying which addition first broke a limit is strictly more useful
-     * than "the finished scene is invalid". O(n) prefixes, each O(n^2) worst case.
+     * than "the finished load is invalid". O(n) prefixes, each O(n^2) worst case.
      *
      * <p>Ground contact rules are re-derived directly from the prefix, exactly as the support
      * constraint defines a supporting surface: at replay time the prefix is already the complete
@@ -169,18 +169,24 @@ public final class LoadingDependencyGraph {
             Container container) {
         DependencyMaps.requirePermutation(order, placements.size());
         Optional<Long> maxDensityTicks = container.maxStackDensity().map(Weight::ticks);
+        // A caller may hand this any layout, validated or not, so the stacking-group rule is
+        // re-checked here too -- only when some item declares a list, and only on the edges of the
+        // step's own new placement, since every earlier edge was judged at its step.
+        boolean grouped = placements.stream()
+                .anyMatch(placement -> !placement.instance().item().acceptsStackingGroups().isEmpty());
         List<Placement> present = new ArrayList<>();
         for (int step = 0; step < order.size(); step++) {
             int index = order.get(step);
             present.add(placements.get(index));
-            Optional<Violation> problem = prefixProblem(present, maxDensityTicks);
+            Optional<Violation> problem = prefixProblem(present, maxDensityTicks, grouped);
             if (problem.isPresent()) {
                 throw new SequenceReplayError(index, step, problem.get().code() + ": " + problem.get().detail());
             }
         }
     }
 
-    private static Optional<Violation> prefixProblem(List<Placement> present, Optional<Long> maxDensityTicks) {
+    private static Optional<Violation> prefixProblem(List<Placement> present, Optional<Long> maxDensityTicks,
+            boolean grouped) {
         List<LoadUnit> units = LoadCalculator.units(present);
         Optional<Violation> problem = LoadCalculator.overloaded(units)
                 .or(() -> LoadCalculator.stackLimitExceeded(units))
@@ -192,6 +198,14 @@ public final class LoadingDependencyGraph {
         for (int unitIndex = 0; unitIndex < units.size(); unitIndex++) {
             if (!present.get(unitIndex).instance().item().stackable() && counts[unitIndex] > 0) {
                 return Optional.of(new Violation("non_stackable_item_has_load", units.get(unitIndex).label()));
+            }
+        }
+        if (grouped) {
+            int last = present.size() - 1;
+            Optional<Violation> refusal = new LoadSupportGraph(units).nonStackableFailure(present,
+                    present.get(last).instance(), last);
+            if (refusal.isPresent()) {
+                return refusal;
             }
         }
         return groundContactProblem(present);

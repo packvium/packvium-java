@@ -11,8 +11,9 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Packing JSON on stdin, result JSON on stdout -- the contract every engine's command-line
- * entry point shares, so the conformance runner can drive this one like the others.
+ * The command-line program: packing JSON on stdin, result JSON on stdout. Every Packvium engine's
+ * command line reads and writes the same documents. A refused request exits 1 with the reason on
+ * stderr; empty input exits 2.
  */
 public final class Main {
     private static final int REFUSED = 1;

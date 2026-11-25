@@ -47,6 +47,22 @@ public record PackingConfig(
         }
     }
 
+    /** The same configuration with these candidate, plan-beam and plan-node bounds. */
+    public PackingConfig withSearchBounds(long candidatesPerItem, long beamWidth, long nodeLimit) {
+        return new PackingConfig(profile, timeLimitMs, topK, seed, maxContainers, clearance, minimumSupportRatio,
+                exactItemLimit, multiStartOrders, validateResult, candidatesPerItem, maxCandidatePoints, solvers,
+                objective, effortBudget, dimensionalWeightDivisor, dimensionalWeightLengthUnit,
+                dimensionalWeightWeightUnit, requirePlacementCoordinates, beamWidth, nodeLimit);
+    }
+
+    /** The same configuration with placement coordinates required: no compact lattice form. */
+    public PackingConfig withPlacementCoordinates() {
+        return new PackingConfig(profile, timeLimitMs, topK, seed, maxContainers, clearance, minimumSupportRatio,
+                exactItemLimit, multiStartOrders, validateResult, maxCandidatesPerItem, maxCandidatePoints, solvers,
+                objective, effortBudget, dimensionalWeightDivisor, dimensionalWeightLengthUnit,
+                dimensionalWeightWeightUnit, true, containerPlanBeamWidth, containerPlanNodeLimit);
+    }
+
     public static Builder builder(SolverProfile profile) {
         return new Builder(profile);
     }

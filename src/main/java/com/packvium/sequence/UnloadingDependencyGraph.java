@@ -15,7 +15,7 @@ import java.util.TreeSet;
 
 /**
  * Unloading dependency graph: which placements must be removed before others,
- * replaying from the full, final scene.
+ * replaying from the full, final load.
  *
  * <p>{@code dependsOn[i]} is {@code i}'s children: whatever rests on {@code i} sits strictly
  * above it, so following edges strictly increases height and a finite set cannot cycle back on
@@ -59,7 +59,7 @@ public final class UnloadingDependencyGraph {
     }
 
     /**
-     * A concrete order placements could be removed in, starting from the full scene, without
+     * A concrete order placements could be removed in, starting from the full load, without
      * ever moving a still-present placement out of the way first. O(n^3 * d): n steps, each
      * testing up to n candidates against n others in d directions.
      */
@@ -83,22 +83,22 @@ public final class UnloadingDependencyGraph {
 
     /**
      * Deterministic: the lowest index among this step's removable candidates, not arbitrary
-     * iteration order.
+     * iteration order. Candidates are tried lowest first and the first removable one is taken, so
+     * the sweep test runs only until it succeeds.
      */
     private static Optional<Integer> lowestRemovable(Set<Integer> candidates, Set<Integer> remaining,
             Map<Integer, Set<Integer>> dependsOn, List<AxisAlignedBox> boxes, Dimensions container,
             List<String> directions) {
-        TreeSet<Integer> removable = new TreeSet<>();
-        for (int index : candidates) {
+        for (int index : new TreeSet<>(candidates)) {
             if (!Collections.disjoint(dependsOn.getOrDefault(index, Set.of()), remaining)) {
                 continue;
             }
             if (SequenceGeometry.clearDirection(index, boxes.get(index), boxes, remaining, container, directions)
                     .isPresent()) {
-                removable.add(index);
+                return Optional.of(index);
             }
         }
-        return removable.isEmpty() ? Optional.empty() : Optional.of(removable.first());
+        return Optional.empty();
     }
 
     public static List<Integer> safeRouteRemovalOrder(List<AxisAlignedBox> boxes, List<Optional<Long>> stops,
@@ -178,7 +178,7 @@ public final class UnloadingDependencyGraph {
     }
 
     /**
-     * Per-placement reachability for the full scene as it stands, one entry per box.
+     * Per-placement reachability for the full load as it stands, one entry per box.
      *
      * <p>Reuses this class's own dependency graph and the same accessibility sweep
      * {@link #safeRemovalOrder} is built from -- no second notion of "blocked". When stops are
@@ -232,7 +232,7 @@ public final class UnloadingDependencyGraph {
     }
 
     /**
-     * Independently replay an unloading order (full scene to empty) and throw at the first step
+     * Independently replay an unloading order (full load to empty) and throw at the first step
      * that is not feasible given only what remains present. It reuses the same
      * geometric primitives as {@link #safeRemovalOrder} but none of its search or tie-break
      * logic, so it can catch a generator bug or a wrong externally-supplied order. O(n^2 * d).

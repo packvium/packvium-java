@@ -109,14 +109,14 @@ final class WeightRebalancerTest {
     /**
      * One container holds 5 kg and 1 kg, the other 1 kg. Moving the 5 kg item only flips which
      * side is heavier, so the 1 kg item moves instead: 5 kg against 2 kg. This is the shared
-     * cross-language case {@code conformance/scene/rebalance-fixtures.json}.
+     * rebalancing case every engine checks.
      */
     @Test
     void aMoveStrictlyReducesThePayloadSpreadBetweenTwoContainers() {
-        Scene scene = heavyLightAlone(null);
-        assertEquals(5000 * TICKS_PER_G, spread(weights(scene.packed())));
+        Layout layout = heavyLightAlone(null);
+        assertEquals(5000 * TICKS_PER_G, spread(weights(layout.packed())));
         PackingConfig config = PackingConfig.balanced();
-        RebalanceResult outcome = WeightRebalancer.rebalance(scene.request(), scene.packed(), List.of(), config);
+        RebalanceResult outcome = WeightRebalancer.rebalance(layout.request(), layout.packed(), List.of(), config);
 
         assertEquals(List.of(2000 * TICKS_PER_G, 5000 * TICKS_PER_G),
                 weights(outcome.containers()).stream().sorted().toList());
@@ -124,8 +124,8 @@ final class WeightRebalancerTest {
         assertEquals(List.of(List.of("heavy#1"), List.of("alone#1", "light#1")), outcome.containers().stream()
                 .map(container -> container.placements().stream().map(p -> p.instance().id()).toList()).toList());
         assertTrue(outcome.improved());
-        assertAccountingHolds(scene.request(), outcome.containers(), List.of());
-        assertValid(scene.request(), outcome.containers(), List.of(), config);
+        assertAccountingHolds(layout.request(), outcome.containers(), List.of());
+        assertValid(layout.request(), outcome.containers(), List.of(), config);
     }
 
     /** Moving the base would leave the item on it floating; the top item moves instead. */
@@ -332,8 +332,8 @@ final class WeightRebalancerTest {
 
     // -------------------------------------------------------------- moves declined or capped
 
-    /** The 6 kg / 1 kg scene, optionally with the lone item in a container type of its own. */
-    private static Scene heavyLightAlone(Container aloneBox) {
+    /** The 6 kg / 1 kg layout, optionally with the lone item in a container type of its own. */
+    private static Layout heavyLightAlone(Container aloneBox) {
         Item heavy = item("heavy", 40, 40, 40, "5000 g");
         Item light = item("light", 40, 40, 40, "1000 g");
         Item alone = item("alone", 40, 40, 40, "1000 g");
@@ -344,30 +344,30 @@ final class WeightRebalancerTest {
         List<PackedContainer> packed = List.of(
                 new PackedContainer(type, 1, List.of(floor(heavy, 1, 0, 0), floor(light, 1, 50, 0))),
                 new PackedContainer(other, other == type ? 2 : 1, List.of(floor(alone, 1, 0, 0))));
-        return new Scene(request, packed);
+        return new Layout(request, packed);
     }
 
     @Test
     void theMoveBudgetCapsHowManyMovesAreCommitted() {
-        Scene scene = heavyLightAlone(null);
-        RebalanceResult outcome = WeightRebalancer.rebalance(scene.request(), scene.packed(), List.of(),
+        Layout layout = heavyLightAlone(null);
+        RebalanceResult outcome = WeightRebalancer.rebalance(layout.request(), layout.packed(), List.of(),
                 PackingConfig.balanced(), 1, WeightRebalancer.DEFAULT_TIME_LIMIT_MS);
         assertEquals(List.of("light#1"), moved(outcome));
     }
 
     @Test
     void aDestinationWithNoRoomLeftReceivesNothing() {
-        Scene scene = heavyLightAlone(box("snug", 40, 40, 40));
-        RebalanceResult outcome = WeightRebalancer.rebalance(scene.request(), scene.packed());
+        Layout layout = heavyLightAlone(box("snug", 40, 40, 40));
+        RebalanceResult outcome = WeightRebalancer.rebalance(layout.request(), layout.packed());
         assertEquals(List.of(), outcome.moves());
-        assertEquals(scene.packed(), outcome.containers());
+        assertEquals(layout.packed(), outcome.containers());
     }
 
     @Test
     void anItemMovedOntoAFullFloorIsStackedAndStaysSupported() {
-        Scene scene = heavyLightAlone(box("tower", 40, 40, 80));
+        Layout layout = heavyLightAlone(box("tower", 40, 40, 80));
         PackingConfig config = PackingConfig.balanced();
-        RebalanceResult outcome = WeightRebalancer.rebalance(scene.request(), scene.packed(), List.of(), config);
+        RebalanceResult outcome = WeightRebalancer.rebalance(layout.request(), layout.packed(), List.of(), config);
 
         assertEquals(List.of("light#1"), moved(outcome));
         PackedContainer tower = outcome.containers().stream().filter(c -> c.id().equals("tower#1")).findFirst()
@@ -376,8 +376,8 @@ final class WeightRebalancerTest {
                 .orElseThrow();
         assertEquals(Length.mm(40).ticks(), landed.position().z());
         assertEquals(1.0, landed.supportRatio());
-        assertAccountingHolds(scene.request(), outcome.containers(), List.of());
-        assertValid(scene.request(), outcome.containers(), List.of(), config);
+        assertAccountingHolds(layout.request(), outcome.containers(), List.of());
+        assertValid(layout.request(), outcome.containers(), List.of(), config);
     }
 
     @Test
@@ -418,7 +418,7 @@ final class WeightRebalancerTest {
                 Length.mm(zMm).ticks()), Rotation.LWH, instance);
     }
 
-    private record Scene(PackingRequest request, List<PackedContainer> packed) {
+    private record Layout(PackingRequest request, List<PackedContainer> packed) {
     }
 
     private record Order(List<Item> items, List<Container> containers) {

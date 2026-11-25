@@ -9,7 +9,7 @@ import java.util.function.BiFunction;
 /**
  * The schema's shape of a request's {@code fixed_placements}, checked before anything is parsed.
  *
- * <p>Held to {@code packvium.fixed_placements.require_fixed_placement_shapes}. Nothing is coerced:
+ * <p>Every Packvium engine checks the same shape. Nothing is coerced:
  * {@code "1"}, {@code true} and {@code 1.9} are not container instances, and a list is not a
  * position. The first entry out of shape is the refusal, {@code invalid_fixed_placement} with
  * reason {@code malformed} and the pointer of the bad value, spelled as every engine spells it.

@@ -22,10 +22,10 @@ import org.junit.jupiter.api.Test;
 /**
  * The execution-plan adapter, holding the properties PHP's ExecutionPlanTest holds.
  *
- * <p>The cross-language equality itself is asserted by the execution-plan conformance run over a
- * tag's golden results, not here: a committed expected string would only prove that Java still
- * agrees with a string. The alternatives rules run on a constructed result because the goldens store the
- * canonical projection, which drops the field.
+ * <p>The cross-language equality itself is checked by the shared execution-plan conformance run,
+ * not here: a committed expected string would only prove that Java still agrees with a string.
+ * The alternatives rules run on a constructed result because the shared expected results store
+ * the canonical projection, which drops the field.
  */
 class PlanTest {
     private static Map<String, Object> scalar(long ticks) {
@@ -109,7 +109,7 @@ class PlanTest {
 
     @Test
     void thePlacementReferenceDoesNotUseItemId() {
-        // `item_id` exists and conformance/canonical.py drops it as an instance count;
+        // `item_id` exists and the shared canonical projection drops it as an instance count;
         // referencing it would make a plan two correct engines disagree about.
         Map<String, Object> reference = Plan.placementReference(0, placement("cube", 0, 0, 0));
         assertEquals(List.of("container_index", "item_type", "orientation", "position_ticks"),
@@ -296,7 +296,7 @@ class PlanTest {
 
     @Test
     void theAdapterReferencesNoSolverNoValidatorAndNoClock() throws IOException {
-        // The dependency direction from docs/EXECUTION-PLAN.md, as the cheapest test of it. The
+        // The dependency direction the execution-plan contract fixes, as the cheapest test of it. The
         // compiled classes are read too, so a fully qualified use cannot slip past an import grep.
         List<String> forbidden = List.of("com.packvium.algorithm", "com.packvium.validation",
                 "com.packvium.Packer", "com.packvium.serialization.RequestPacker", "java.time",

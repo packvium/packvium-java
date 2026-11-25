@@ -10,8 +10,9 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Drive the execution-plan adapter the way conformance/execution/run.py drives PHP's: a packing
- * result in, {@code Plan.canonicalJson(Plan.build([], result))} out.
+ * A test harness for cross-engine conformance; not a supported interface.
+ *
+ * <p>A packing result in, {@code Plan.canonicalJson(Plan.build([], result))} out.
  *
  * <p>With no arguments the result is read from stdin and its plan written without a newline.
  * Each argument is otherwise a result file, and each plan is written on its own line, so one

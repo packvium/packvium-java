@@ -13,8 +13,8 @@ import java.util.Objects;
 /**
  * An execution plan derived from an already validated packing result.
  *
- * <p>docs/EXECUTION-PLAN.md is the contract, and {@code packvium.execution} is the reference
- * implementation this one is held to <strong>byte-identical</strong> on {@link #canonicalJson}.
+ * <p>Every Packvium engine builds the same plan, <strong>byte for byte</strong> in
+ * {@link #canonicalJson}.
  * That bar is why several things here look more careful than they need to for Java alone:
  * integers are cast rather than trusted, keys are emitted in a fixed order, and no value is
  * ever formatted through a locale-sensitive path.
@@ -54,11 +54,10 @@ public final class Plan {
     }
 
     /**
-     * A reference two languages agree on, for one placement in one container.
+     * A placement reference every Packvium engine agrees on, for one placement in one container.
      *
      * <p>{@code containerIndex} is the container's position, never its {@code id}:
-     * conformance/canonical.py drops ids from the projection two implementations are diffed
-     * against, because an id is "an instance count rather than a semantic property". Position
+     * the shared canonical projection of a result drops ids, because an id is "an instance count rather than a semantic property". Position
      * is read from {@code ticks}, the exact integer, and never from {@code value}, the
      * rendering the same {@code exactScalar} also carries.
      */
@@ -158,7 +157,7 @@ public final class Plan {
 
     /**
      * The one byte-comparable spelling of a plan: RFC 8785, shared with the operational artifact
-     * and held to {@code packvium.execution.canonical_plan_json}.
+     * and the same in every engine.
      *
      * <p>Cross-language equality is asserted on this string rather than on a parsed tree, so
      * key order and whitespace cannot make two identical plans look different. Until 1.3.0 this
@@ -322,7 +321,7 @@ public final class Plan {
     /**
      * Python's {@code int()} of a tick count: an integer as it is, a fraction truncated toward
      * zero, a boolean as 0 or 1 and a whole-number string parsed. A value past 64 bits is carried
-     * as the exact integer the reference's {@code int()} makes of it, never wrapped, so the
+     * as the exact integer the Python engine's {@code int()} makes of it, never wrapped, so the
      * canonical writer refuses it as {@code number_out_of_range}, as it refuses one past 2^53.
      */
     private static Number integer(Object value) {
@@ -364,7 +363,7 @@ public final class Plan {
     }
 
     /**
-     * A JSON array as a list, and an absent one as empty. The reference reads these fields as
+     * A JSON array as a list, and an absent one as empty. The Python engine reads these fields as
      * {@code list(value or ())}, so the other empty values -- {@code {}}, {@code ""}, {@code 0},
      * {@code false} -- are empty too, as PHP's {@code Plan::sequence} has read them since 1.3.0;
      * any other non-list has no entries to describe.

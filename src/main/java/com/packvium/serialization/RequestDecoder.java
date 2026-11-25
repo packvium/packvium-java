@@ -12,11 +12,13 @@ import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
 import com.packvium.domain.FixedPlacement;
 import com.packvium.domain.Item;
+import com.packvium.domain.MadeToMeasure;
 import com.packvium.domain.Obstacle;
 import com.packvium.domain.Point;
 import com.packvium.domain.RateTable;
 import com.packvium.domain.Rotation;
 import com.packvium.domain.ShapeType;
+import com.packvium.domain.Sides;
 import com.packvium.domain.Vertex;
 import com.packvium.policy.PolicyRuleSet;
 import com.packvium.support.CanonicalJsonException;
@@ -36,8 +38,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Reads a wire request into the domain, in the reference engines' order, so the first
- * refusal a malformed request earns is the same one they give.
+ * Reads a wire request into the domain, in the order every Packvium engine reads
+ * it, so the first refusal a malformed request earns is the same one they give.
  */
 public final class RequestDecoder {
     private static final String WEIGHT_UNIT = "g";
@@ -73,7 +75,7 @@ public final class RequestDecoder {
     }
 
     /**
-     * The request's model, in the reference's order: configuration, catalog references, policy,
+     * The request's model, in the Python engine's order: configuration, catalog references, policy,
      * items, containers, fixed placements.
      */
     private static DecodedRequest model(Fields request) {
@@ -217,7 +219,9 @@ public final class RequestDecoder {
                 .hullVertices(item.has("hull_vertices") ? hullVertices(item.list("hull_vertices"), unit) : null)
                 .compressionRatioPpm(item.has("compression_ratio")
                         ? ratioToPpm(item.number("compression_ratio", 0)) : null)
-                .maxCompressionPressureKpa(item.optionalInteger("max_compression_pressure_kpa"));
+                .maxCompressionPressureKpa(item.optionalInteger("max_compression_pressure_kpa"))
+                .stackingGroup(item.optionalText("stacking_group").orElse(null))
+                .acceptsStackingGroups(item.tags("accepts_stacking_groups"));
         return builder.build();
     }
 
@@ -281,7 +285,29 @@ public final class RequestDecoder {
                 .axles(container.has("axles") ? axles(container.list("axles"), unit) : null)
                 .rateTable(container.has("rate_table") ? rateTable(container.child("rate_table")) : null)
                 .accessDirections(container.strings("access_directions"))
+                .deformableBoundary(container.has("deformable_boundary")
+                        ? container.child("deformable_boundary").text("kind", "") : null)
+                .madeToMeasure(container.has("made_to_measure")
+                        ? madeToMeasure(container.child("made_to_measure"), unit) : null)
                 .build();
+    }
+
+    private static MadeToMeasure madeToMeasure(Fields machine, String unit) {
+        Weight tare = weight(machine, "tare_per_square_metre", Weight.ZERO);
+        return new MadeToMeasure(sides(machine, "minimum", unit), sides(machine, "increment", unit),
+                machine.integer("cost_per_square_metre_minor", 0), tare.ticks(),
+                sides(machine, "outer_allowance", unit));
+    }
+
+    /** A {length, width, height} block in ticks, all zero when absent. */
+    private static Sides sides(Fields block, String name, String unit) {
+        if (!block.has(name)) {
+            return new Sides(0, 0, 0);
+        }
+        Map<?, ?> raw = new Fields(block.raw(name), name).members();
+        return new Sides(Length.parse(raw.get("length"), unit, Rounding.NEAREST).ticks(),
+                Length.parse(raw.get("width"), unit, Rounding.NEAREST).ticks(),
+                Length.parse(raw.get("height"), unit, Rounding.NEAREST).ticks());
     }
 
     private static List<Obstacle> obstacles(List<?> raw, String unit) {

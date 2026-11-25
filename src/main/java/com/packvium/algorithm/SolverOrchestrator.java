@@ -35,6 +35,13 @@ import java.util.TreeSet;
  */
 public final class SolverOrchestrator {
     private static final String NEIGHBORHOOD = "neighborhood:";
+    /**
+     * Lattice nodes the block start added to {@code fast} and {@code balanced} may enumerate per
+     * mode -- the bound {@code quality} gives the same solver through containerPlanNodeLimit.
+     */
+    private static final long BLOCK_START_NODE_LIMIT = 100_000;
+    /** Beam width and candidates per item for the beam refinement of a winning late-type order. */
+    private static final long LATE_TYPE_REFINEMENT_WIDTH = 4;
     private static final Set<String> SOLVER_NAMES = new LinkedHashSet<>(
             List.of("grid", "extreme_points", "homogeneous_blocks", "layer", "maximal_spaces", "exact_small"));
 
@@ -72,12 +79,49 @@ public final class SolverOrchestrator {
      */
     public PortfolioRun solvePortfolio(List<ItemInstance> items, List<Container> containers, PackingConfig config,
             Deadline deadline, List<PackedContainer> preloaded) {
-        List<Start> starts = starts(items, config);
+        List<Start> starts = starts(items, config, containers);
         Optional<EffortBudget> budget = config.effortBudget();
         if (budget.isPresent() && budget.get().maxRestarts().isPresent()) {
             starts = starts.subList(0, (int) Math.min(budget.get().maxRestarts().get(), starts.size()));
         }
-        return solveSequential(items, containers, config, deadline, starts, budget, preloaded);
+        PortfolioRun run = solveSequential(items, containers, config, deadline, starts, budget, preloaded);
+        return withoutABlockStartThatOnlyTies(run, starts, config);
+    }
+
+    /**
+     * Drop the added block start's answer unless it strictly beats the profile's own. The start
+     * is there to improve an answer, not to replace an equal one: on a tie the ranking falls to the
+     * solver name, which would hand the result to a lattice that knows nothing of the orderings the
+     * profile's own starts honour. Its start record stays. O(r) scores over the r finished starts.
+     */
+    private static PortfolioRun withoutABlockStartThatOnlyTies(PortfolioRun run, List<Start> starts,
+            PackingConfig config) {
+        if (starts.isEmpty()) {
+            return run;
+        }
+        Start last = starts.get(starts.size() - 1);
+        if (!(last.solver() instanceof HomogeneousBlockSolver blocks) || blocks.nodeLimit().isEmpty()) {
+            return run;
+        }
+        SolutionScorer scorer = ObjectiveRegistry.resolve(config.objective(), config);
+        String added = last.id();
+        SortKey bestOwn = null;
+        for (RawSolution solution : run.solutions()) {
+            if (solution.solverName().equals(added)) {
+                continue;
+            }
+            SortKey score = new SortKey(List.copyOf(scorer.score(solution).components()));
+            if (bestOwn == null || score.compareTo(bestOwn) < 0) {
+                bestOwn = score;
+            }
+        }
+        if (bestOwn == null) {
+            return run;
+        }
+        SortKey own = bestOwn;
+        List<RawSolution> kept = run.solutions().stream().filter(solution -> !solution.solverName().equals(added)
+                || new SortKey(List.copyOf(scorer.score(solution).components())).compareTo(own) < 0).toList();
+        return new PortfolioRun(kept, run.starts());
     }
 
     private PortfolioRun solveSequential(List<ItemInstance> items, List<Container> containers, PackingConfig config,
@@ -102,9 +146,7 @@ public final class SolverOrchestrator {
             SearchStats stats = new SearchStats();
             Deadline slice = deadline.slice(starts.size() - position);
             slice = effortBudget.isPresent() ? slice.withEffort(effortBudget.get(), stats) : slice;
-            PackingConfig startConfig = start.orderName().endsWith(":greedy") || start.orderName().contains(":late_")
-                    ? greedyConfig(config)
-                    : config;
+            PackingConfig startConfig = startConfig(start.orderName(), config);
             ContainerPlanner.Outcome outcome = acrossContainers(start.solver(), start.order(), containers, startConfig,
                     stats, slice, preloaded);
             boolean effortReached = slice.effortExceeded();
@@ -131,7 +173,7 @@ public final class SolverOrchestrator {
     }
 
     /**
-     * A staged start resolved against what has already run, as Python's {@code _solve_sequential}
+     * A staged start resolved against what has already run, as the Python engine
      * resolves it: the best finished extreme-point start by the request's objective (ties by start
      * id), a greedy one for a neighborhood. A neighborhood re-runs that order with one item type
      * moved last ({@code :late_<type>}); the refinement re-runs it with the beam
@@ -187,7 +229,7 @@ public final class SolverOrchestrator {
         return new PortfolioRun(solutions, finished);
     }
 
-    private List<Start> starts(List<ItemInstance> items, PackingConfig config) {
+    private List<Start> starts(List<ItemInstance> items, PackingConfig config, List<Container> containers) {
         List<ItemOrders.Named> orders = ItemOrders.orders(items, config, customOrders);
         List<Start> starts = new ArrayList<>();
         for (SingleContainerSolver solver : solvers(items, config)) {
@@ -195,6 +237,11 @@ public final class SolverOrchestrator {
             List<ItemOrders.Named> chosen = solver.orderInsensitive() ? orders.subList(0, Math.min(1, orders.size()))
                     : orders;
             chosen.forEach(order -> starts.add(new Start(solver, order.name(), order.order())));
+        }
+        // Last, so a restart budget drops it first and the profile's own starts keep theirs.
+        if (!orders.isEmpty()) {
+            blockStart(items, config, containers).ifPresent(
+                    blocks -> starts.add(new Start(blocks, orders.get(0).name(), orders.get(0).order())));
         }
         if (config.containerPlanBeamWidth() <= 1 || config.profile() != SolverProfile.QUALITY) {
             return starts;
@@ -222,14 +269,58 @@ public final class SolverOrchestrator {
         return staged;
     }
 
-    /** The same config with the beams switched off, for the cheap greedy pass of a quality start. */
-    private static PackingConfig greedyConfig(PackingConfig config) {
-        return new PackingConfig(config.profile(), config.timeLimitMs(), config.topK(), config.seed(),
-                config.maxContainers(), config.clearance(), config.minimumSupportRatio(), config.exactItemLimit(),
-                config.multiStartOrders(), config.validateResult(), 1, config.maxCandidatePoints(), config.solvers(),
-                config.objective(), config.effortBudget(), config.dimensionalWeightDivisor(),
-                config.dimensionalWeightLengthUnit(), config.dimensionalWeightWeightUnit(),
-                config.requirePlacementCoordinates(), 1, 1);
+    /**
+     * The block start {@code fast} and {@code balanced} add to their own. Single-type
+     * blocks fill a carton load in milliseconds where a per-item search spends its whole budget, so
+     * the low-latency profiles run them as one more start and let the score decide -- only where
+     * the lattice can express the whole request, since a start that fell back to the per-item
+     * solver would repeat one already in the portfolio. One item type is the grid's case. O(n + c).
+     */
+    private Optional<HomogeneousBlockSolver> blockStart(List<ItemInstance> items, PackingConfig config,
+            List<Container> containers) {
+        boolean fast = config.profile() == SolverProfile.FAST;
+        if (!fast && config.profile() != SolverProfile.BALANCED || !config.solvers().isEmpty()) {
+            return Optional.empty();
+        }
+        if (!customSolvers.isEmpty() || !customConstraints.isEmpty()
+                || items.stream().map(item -> item.item().id()).distinct().count() < 2) {
+            return Optional.empty();
+        }
+        // A lattice takes whichever type fills best; it cannot honour a caller's say over which item
+        // goes first, so it stays out when the items do not all lead alike.
+        if (items.stream().map(item -> ItemOrdering.lead(item, config)).distinct().count() > 1) {
+            return Optional.empty();
+        }
+        // One enumeration, the one the objective ranks by: fast is latency-bound.
+        List<HomogeneousBlockSolver.Mode> modes = !fast ? HomogeneousBlockSolver.MODES
+                : List.of(config.objective().equals("maximum_volume") ? HomogeneousBlockSolver.Mode.VOLUME
+                        : HomogeneousBlockSolver.Mode.COUNT);
+        HomogeneousBlockSolver solver = new HomogeneousBlockSolver(List.of(), modes,
+                Optional.of(BLOCK_START_NODE_LIMIT));
+        if (containers.isEmpty() || !containers.stream().allMatch(container -> solver.supports(container, items,
+                config))) {
+            return Optional.empty();
+        }
+        return Optional.of(solver);
+    }
+
+    /**
+     * The configuration one start searches with. Greedy orderings and their late-type
+     * neighbourhoods keep one candidate per item; a beam refinement of a winning neighbourhood
+     * still carries {@code :late_} in its name, yet it is the one start meant to search wide, at
+     * {@link #LATE_TYPE_REFINEMENT_WIDTH}.
+     */
+    private static PackingConfig startConfig(String orderName, PackingConfig config) {
+        boolean beam = orderName.endsWith(":beam");
+        if (!beam && (orderName.endsWith(":greedy") || orderName.contains(":late_"))) {
+            return config.withSearchBounds(1, 1, 1);
+        }
+        if (beam && orderName.contains(":late_")) {
+            return config.withSearchBounds(Math.min(config.maxCandidatesPerItem(), LATE_TYPE_REFINEMENT_WIDTH),
+                    Math.min(config.containerPlanBeamWidth(), LATE_TYPE_REFINEMENT_WIDTH),
+                    config.containerPlanNodeLimit());
+        }
+        return config;
     }
 
     private List<SingleContainerSolver> solvers(List<ItemInstance> items, PackingConfig config) {
@@ -303,6 +394,11 @@ public final class SolverOrchestrator {
             return;
         }
         if (!config.objective().equals("default")) {
+            return;
+        }
+        // Its unused-volume and height keys are ratios against a declared size, and a
+        // made-to-measure box has none until it is cut: the bound would not be admissible.
+        if (containers.stream().anyMatch(container -> container.madeToMeasure().isPresent())) {
             return;
         }
         stats.setObjectiveLowerBound(ObjectiveBounds.compute(items, containers));

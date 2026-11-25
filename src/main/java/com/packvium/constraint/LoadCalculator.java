@@ -11,12 +11,12 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Whole-scene load checks, each building its own support graph. O(n log n + E) per call for
+ * Whole-layout load checks, each building its own support graph. O(n log n + E) per call for
  * the loads; the ancestor-set queries are O(n^2) worst case.
  */
 public final class LoadCalculator {
     /**
-     * One square metre in length ticks squared, the reference area a stack density limit is
+     * One square metre in length ticks squared, the area a stack density limit is
      * expressed per, derived from the single tick scale so it can never drift from it.
      */
     public static final long SQUARE_METRE_TICKS = (1000 * Length.TICKS_PER_MM) * (1000 * Length.TICKS_PER_MM);

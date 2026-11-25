@@ -6,7 +6,7 @@ import java.util.Set;
 
 /**
  * Whether placement {@code index} could be reached and removed <em>right now</em>, given the full
- * scene as it stands, its contact-graph dependents and the declared route
+ * load as it stands, its contact-graph dependents and the declared route
  * -- a snapshot query: "if the door opened right now, what could actually come out first."
  *
  * <p>{@code reachable} is true only when none of the three blocks it. {@code blockedByNeighbors}

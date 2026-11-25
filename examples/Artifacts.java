@@ -19,7 +19,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Artifacts.java
+ *     java -cp target/packvium-1.6.0.jar examples/Artifacts.java
  * </pre>
  *
  * <p>An execution plan says what to lift first. A warehouse or transport system needs more than
@@ -29,8 +29,8 @@ import java.util.Map;
  *
  * <p>The operational artifact is that one document. It wraps the plan unchanged and adds geometry,
  * display values and provenance. It exports to JSON, CSV and a printable HTML work order, and none
- * of that calls a solver, a renderer or a clock. Four engines build the same bytes from it; this
- * example follows the Python one.
+ * of that calls a solver, a renderer or a clock. Every Packvium engine builds the same bytes from
+ * it.
  */
 public final class Artifacts {
     private static final String RULE = "=".repeat(78);

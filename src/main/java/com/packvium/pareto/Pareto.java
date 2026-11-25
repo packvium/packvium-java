@@ -143,7 +143,7 @@ public final class Pareto {
     }
 
     /**
-     * Whether the vector path may answer, as the reference decides it: at least two candidates,
+     * Whether the vector path may answer, as the Python engine decides it: at least two candidates,
      * each with a value on every compared axis and no absent value anywhere. {@code NaN} cannot
      * reach here; {@link CandidateResult} refuses it.
      */
@@ -203,7 +203,7 @@ public final class Pareto {
      * Sorted by (x, y), one pass keeps the running least y. A run of equal x survives only at its
      * least y, and only if that y is below every y seen at a smaller x; equal vectors survive
      * together, since neither dominates the other. Comparisons are on primitive values, so
-     * {@code -0.0} equals {@code 0.0} as it does in the reference. O(c log c).
+     * {@code -0.0} equals {@code 0.0} as it does in the Python engine. O(c log c).
      */
     private static boolean[] twoAxisFrontier(double[][] vectors) {
         List<Integer> ordered = new ArrayList<>(vectors.length);

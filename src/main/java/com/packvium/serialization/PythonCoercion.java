@@ -8,9 +8,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The built-in conversions the reference request reader applies to a raw configuration value:
+ * The built-in conversions the Python engine's request reader applies to a raw configuration value:
  * {@code int(value)} and the iteration {@code tuple(value)} performs, with Python's own refusal
- * text, so a request the rules let through is read, or refused, as the reference reads it.
+ * text, so a request the rules let through is read, or refused, as the Python engine reads it.
  */
 final class PythonCoercion {
     private static final String OUT_OF_RANGE = "integer exceeds the 64-bit range this engine carries";

@@ -271,7 +271,7 @@ public final class HullShape {
     }
 
     /**
-     * Ordered by the decimal key, as the reference engine's {@code ksort} leaves them. The
+     * Ordered by the decimal key, as PHP's {@code ksort} leaves them. The
      * predicate is an `and` over the whole set, so this order never changes an answer.
      */
     private static List<long[]> separatingAxisArrays(HullShape left, HullShape right) {

@@ -3,7 +3,7 @@ package com.packvium.artifacts;
 /**
  * The builder or an exporter was handed something an artifact cannot carry.
  *
- * <p>{@link #errorCode()} is one of a closed set shared by all four reference engines:
+ * <p>{@link #errorCode()} is one of a closed set shared by every Packvium engine:
  * {@code invalid_request}, {@code invalid_result}, {@code invalid_plan_input},
  * {@code mixed_units}, {@code number_out_of_range}, {@code invalid_string},
  * {@code invalid_value}, {@code unknown_format}, {@code invalid_json}.

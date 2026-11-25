@@ -59,13 +59,13 @@ final class Fields {
         return value == null ? fallback : integerValue(value, name);
     }
 
-    /** {@code int(raw.get(name, fallback))}, as the reference reads the seed. */
+    /** {@code int(raw.get(name, fallback))}, as the Python engine reads the seed. */
     long pythonInteger(String name, long fallback) {
         Object value = members.get(name);
         return value == null ? fallback : PythonCoercion.integer(value);
     }
 
-    /** {@code tuple(raw.get(name, []))} of strings, as the reference reads the solver list. */
+    /** {@code tuple(raw.get(name, []))} of strings, as the Python engine reads the solver list. */
     List<String> iteratedStrings(String name) {
         Object value = members.get(name);
         List<String> strings = new ArrayList<>();
@@ -128,7 +128,7 @@ final class Fields {
     }
 
     /**
-     * A tag set: as {@link #strings}, and a list or object member is refused as the reference's
+     * A tag set: as {@link #strings}, and a list or object member is refused as the Python engine's
      * set refuses an unhashable value.
      */
     List<String> tags(String name) {

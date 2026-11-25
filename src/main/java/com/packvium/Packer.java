@@ -12,6 +12,7 @@ import com.packvium.domain.FixedPlacement;
 import com.packvium.domain.Item;
 import com.packvium.domain.PackedContainer;
 import com.packvium.domain.PackingRequest;
+import com.packvium.domain.Placement;
 import com.packvium.extension.ExtensionRegistry;
 import com.packvium.objective.LandedCostSolutionScorer;
 import com.packvium.objective.ObjectiveRegistry;
@@ -112,6 +113,7 @@ public final class Packer {
                 }
             }
         }
+        unsupportedPlacements(raw.containers(), config.minimumSupportRatio()).ifPresent(warnings::add);
         ResultFact termination = TerminationSummary.aggregate(markWinner(records, raw.solverName()),
                 status == PackingStatus.INVALID_RESULT);
         if (raw.effortLimitReached() && !raw.timeLimitReached()) {
@@ -124,6 +126,31 @@ public final class Packer {
                 raw.stats().candidatesEvaluated, raw.stats().placementsAttempted, raw.stats().metrics());
         return PackingResult.of(status, raw.containers(), raw.unpacked(), report, score, warnings, termination,
                 config.objective());
+    }
+
+    /**
+     * The warning: the default minimum_support_ratio of 0 is kept so that no packing answer
+     * changes, and a caller who never set it is told instead. The count reads the support ratio
+     * every placement already reports, O(placements) with no geometry: an item on an obstacle
+     * counts, a fixed placement supports like any other, and a lattice summary is always floor-up.
+     */
+    static Optional<String> unsupportedPlacements(List<PackedContainer> containers, double minimumSupportRatio) {
+        if (minimumSupportRatio != 0) {
+            return Optional.empty();
+        }
+        long count = 0;
+        for (PackedContainer container : containers) {
+            for (Placement placement : container.placements()) {
+                if (placement.supportRatio() == 0 && placement.position().z() > 0) {
+                    count++;
+                }
+            }
+        }
+        if (count == 0) {
+            return Optional.empty();
+        }
+        return Optional.of("unsupported_placements: " + count + " placement(s) rest on nothing above the container "
+                + "floor; set configuration.minimum_support_ratio above 0 to require support");
     }
 
     private static PackingStatus status(RawSolution raw) {

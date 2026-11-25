@@ -66,22 +66,29 @@ final class ItemOrders {
 
     /** Every strategy is keyed behind ItemOrdering.lead, which carries priority, route stop and value. */
     private static List<Strategy> strategies(PackingConfig config) {
-        List<Strategy> strategies = new ArrayList<>();
+        List<Strategy> smallFirst = new ArrayList<>();
         if (config.profile() == SolverProfile.QUALITY) {
-            strategies.add(new Strategy("small_edge", item -> key(item, config, item.dimensions().maxEdge(),
+            smallFirst.add(new Strategy("small_edge", item -> key(item, config, item.dimensions().maxEdge(),
                     item.dimensions().volume(), item.id())));
-            strategies.add(new Strategy("small_volume", item -> key(item, config, item.dimensions().volume(),
+            smallFirst.add(new Strategy("small_volume", item -> key(item, config, item.dimensions().volume(),
                     item.dimensions().maxEdge(), item.id())));
         }
-        strategies.add(new Strategy("volume", item -> key(item, config, item.dimensions().volume().negate(),
+        List<Strategy> largeFirst = new ArrayList<>();
+        largeFirst.add(new Strategy("volume", item -> key(item, config, item.dimensions().volume().negate(),
                 -item.dimensions().maxEdge(), -item.weight().ticks(), item.id())));
-        strategies.add(new Strategy("base_area", item -> key(item, config, -item.dimensions().baseAreaTicks(),
+        largeFirst.add(new Strategy("base_area", item -> key(item, config, -item.dimensions().baseAreaTicks(),
                 item.dimensions().volume().negate(), item.id())));
-        strategies.add(new Strategy("weight", item -> key(item, config, -item.weight().ticks(),
+        largeFirst.add(new Strategy("weight", item -> key(item, config, -item.weight().ticks(),
                 item.dimensions().volume().negate(), item.id())));
-        strategies.add(new Strategy("constrained", item -> key(item, config,
+        largeFirst.add(new Strategy("constrained", item -> key(item, config,
                 (long) item.item().allowedRotations().size(), -item.item().minimumSupportRatio(),
                 item.dimensions().volume().negate(), item.id())));
+        // Small items first places the most pieces; large items first fills the most space. The
+        // objective decides which family gets the early, fully funded starts.
+        List<Strategy> strategies = new ArrayList<>();
+        boolean byVolume = config.objective().equals("maximum_volume");
+        strategies.addAll(byVolume ? largeFirst : smallFirst);
+        strategies.addAll(byVolume ? smallFirst : largeFirst);
         return strategies;
     }
 

@@ -10,7 +10,7 @@ import java.util.Optional;
 
 /**
  * Whether a decoded JSON value reads as a length or weight, judged the way {@code Length.parse}
- * and {@code Weight.parse} judge it in the reference.
+ * and {@code Weight.parse} judge it in the Python engine.
  *
  * <p>The value is normalised first to what the parsers take -- an integer, a string, or an
  * object of {@code value} and an optional string {@code unit} -- so a refusal is always a verdict.
@@ -56,11 +56,20 @@ public final class MeasureReading {
         return Verdict.READABLE;
     }
 
+    /**
+     * The ticks of a value {@link #verdict} already found readable, for a rule that compares
+     * measures.
+     */
+    public static long ticks(Object value, Kind kind, String unit) {
+        Object parsed = kind.parse(normalised(value).orElseThrow(), unit);
+        return parsed instanceof Length length ? length.ticks() : ((Weight) parsed).ticks();
+    }
+
     public static boolean knowsUnit(Kind kind, String unit) {
         return kind.knows(unit);
     }
 
-    /** What the parser can be handed, or empty when the reference could not read it either. */
+    /** What the parser can be handed, or empty when the Python engine could not read it either. */
     private static Optional<Object> normalised(Object value) {
         if (value instanceof Long || value instanceof String) {
             return Optional.of(value);
@@ -97,7 +106,7 @@ public final class MeasureReading {
     }
 
     /**
-     * An object measure's {@code value}, which the reference reads as a number or its text: a
+     * An object measure's {@code value}, which the Python engine reads as a number or its text: a
      * boolean is the integer it is in Python, and a float only when it is whole.
      */
     private static Optional<Object> amount(Object amount) {

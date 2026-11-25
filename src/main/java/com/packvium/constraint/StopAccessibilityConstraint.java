@@ -14,7 +14,7 @@ import java.util.Set;
  *
  * <p>RouteOrderConstraint enforces the vertical half of route order; this is the horizontal
  * half: nothing due later may stand <em>between</em> an earlier item and the way out. Both are
- * necessary and neither implies the other; the post-validator's whole-scene replay remains the
+ * necessary and neither implies the other; the post-validator's whole-layout replay remains the
  * sufficient check.
  *
  * <p>Opt-in twice over: inert unless doors are stated -- assuming all six walls open would
@@ -120,9 +120,10 @@ public final class StopAccessibilityConstraint implements PlacementConstraint {
             return ConstraintResult.allow();
         }
         // The container's own doors win; the configured list is what a container that states
-        // none inherits.
-        List<String> doors = context.container().accessDirections().isEmpty()
-                ? defaultDirections : context.container().accessDirections();
+        // none inherits. A flat bag has no walls, so it inherits none.
+        List<String> doors = context.container().isFlatBag() ? List.of()
+                : context.container().accessDirections().isEmpty()
+                        ? defaultDirections : context.container().accessDirections();
         if (doors.isEmpty()) {
             return ConstraintResult.allow();
         }

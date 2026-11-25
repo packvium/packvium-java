@@ -18,8 +18,8 @@ import java.util.Objects;
 /**
  * The portable operational artifact.
  *
- * <p>docs/OPERATIONAL-ARTIFACTS.md is the contract and {@code packvium.artifacts} is the
- * reference this builder is held to <strong>byte-identical</strong> on {@link #canonicalJson}.
+ * <p>Every Packvium engine builds the same artifact, <strong>byte for byte</strong> in
+ * {@link #canonicalJson}.
  * An execution plan says what to do first; the artifact is the one document that can also be
  * drawn, printed and traced offline, and it adds nothing a solver decided.
  *
@@ -36,11 +36,11 @@ public final class OperationalArtifact {
     public static final String FORMAT = "packvium-operational-artifact/v1";
 
     /**
-     * The suite version of this builder, the same string in all four engines of one release.
+     * The suite version of this builder, the same string in every engine of one release.
      * The engine's own name is deliberately not recorded: four correct builders naming
      * themselves would emit four different documents.
      */
-    public static final String SUITE_VERSION = "1.5.0";
+    public static final String SUITE_VERSION = "1.6.0";
 
     /** The deterministic part of {@code result.algorithm}; {@code duration_ms} is wall-clock time. */
     public static final List<String> SOLVER_FIELDS = List.of(
@@ -139,7 +139,7 @@ public final class OperationalArtifact {
     }
 
     /**
-     * The artifact's RFC 8785 canonical form, the bytes four engines are compared on.
+     * The artifact's RFC 8785 canonical form, the bytes every engine is compared on.
      *
      * @throws OperationalArtifactException with the canonical writer's code
      */
@@ -267,7 +267,7 @@ public final class OperationalArtifact {
     }
 
     /**
-     * Lengths as decimal strings of ticks: the scene contract's spelling, and one no engine has
+     * Lengths as decimal strings of ticks: the artifact contract's spelling, and one no engine has
      * to hold as a native number.
      */
     private static Map<String, Object> tickDimensions(Object dimensions) {
@@ -364,7 +364,7 @@ public final class OperationalArtifact {
         return found;
     }
 
-    /** The (item type, orientation, x, y, z) tuple the reference keys on; nulls allowed. */
+    /** The (item type, orientation, x, y, z) tuple the Python engine keys on; nulls allowed. */
     private static List<Object> referenceKey(Map<?, ?> reference) {
         Map<?, ?> ticks = (Map<?, ?>) reference.get("position_ticks");
         return Arrays.asList(reference.get("item_type"), reference.get("orientation"),
@@ -431,7 +431,7 @@ public final class OperationalArtifact {
         return members.get(name);
     }
 
-    /** A JSON integer, as the reference's {@code isinstance(value, int)} without {@code bool}. */
+    /** A JSON integer, as the Python engine's {@code isinstance(value, int)} without {@code bool}. */
     private static boolean isInteger(Object value) {
         return value instanceof Long || value instanceof Integer || value instanceof Short || value instanceof Byte
                 || value instanceof BigInteger;

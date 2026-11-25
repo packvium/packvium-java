@@ -26,14 +26,14 @@ class LoadGeometryTest {
         return new AxisAlignedBox(new Point(x, y, z), Dimensions.ofTicks(l, w, h));
     }
 
-    static final List<AxisAlignedBox> SCENE = List.of(box(0, 0, 0, 10, 10, 10), box(10, 0, 0, 10, 10, 10),
+    static final List<AxisAlignedBox> LAYOUT = List.of(box(0, 0, 0, 10, 10, 10), box(10, 0, 0, 10, 10, 10),
             box(5, 0, 10, 10, 10, 10), box(0, 0, 20, 7, 10, 5), box(20, 0, 0, 3, 3, 3));
 
     private static List<LoadUnit> units() {
         long[] weights = {1000, 1000, 1001, 333, 5};
         List<LoadUnit> units = new ArrayList<>();
-        for (int index = 0; index < SCENE.size(); index++) {
-            units.add(new LoadUnit(SCENE.get(index), weights[index],
+        for (int index = 0; index < LAYOUT.size(); index++) {
+            units.add(new LoadUnit(LAYOUT.get(index), weights[index],
                     index == 0 ? Optional.of(500L) : Optional.empty(),
                     index == 1 ? Optional.of(1L) : Optional.empty(), "u" + index));
         }
@@ -42,7 +42,7 @@ class LoadGeometryTest {
 
     @Test
     void contactGraphFindsFaceContactInIndexOrder() {
-        ContactGraph graph = new ContactGraph(SCENE);
+        ContactGraph graph = new ContactGraph(LAYOUT);
         assertEquals(List.of(), graph.supporters(0));
         assertEquals(List.of(new ContactEdge(0, 50), new ContactEdge(1, 50)), graph.supporters(2));
         assertEquals(List.of(new ContactEdge(2, 20)), graph.supporters(3));
@@ -53,18 +53,18 @@ class LoadGeometryTest {
 
     @Test
     void appendingABoxMatchesAFreshBuild() {
-        ContactGraph incremental = new ContactGraph(SCENE.subList(0, 2), 10);
-        for (AxisAlignedBox box : SCENE.subList(2, SCENE.size())) {
+        ContactGraph incremental = new ContactGraph(LAYOUT.subList(0, 2), 10);
+        for (AxisAlignedBox box : LAYOUT.subList(2, LAYOUT.size())) {
             incremental = incremental.withBox(box);
         }
-        ContactGraph fresh = new ContactGraph(SCENE);
-        for (int index = 0; index < SCENE.size(); index++) {
+        ContactGraph fresh = new ContactGraph(LAYOUT);
+        for (int index = 0; index < LAYOUT.size(); index++) {
             assertEquals(fresh.supporters(index), incremental.supporters(index));
             assertEquals(fresh.children(index), incremental.children(index));
         }
         LoadSupportGraph grown = new LoadSupportGraph(units().subList(0, 4), 10).withUnit(units().get(4), 10);
         LoadSupportGraph built = new LoadSupportGraph(units());
-        for (int index = 0; index < SCENE.size(); index++) {
+        for (int index = 0; index < LAYOUT.size(); index++) {
             assertEquals(built.supporters(index), grown.supporters(index));
         }
     }

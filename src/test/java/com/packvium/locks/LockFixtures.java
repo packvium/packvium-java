@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The scenes the reference's lock tests and lock conformance scenarios pack, and the readings of a
+ * The loads the Python engine's lock tests and the shared lock scenarios pack, and the readings of a
  * result they assert on.
  *
  * <p>The two shared corpus fixtures among them, {@code exact-fit} and
@@ -73,7 +73,7 @@ final class LockFixtures {
         return parse(EIGHT_CUBES.formatted(""));
     }
 
-    /** The same scene with two boxes on offer. */
+    /** The same load with two boxes on offer. */
     static Map<String, Object> eightCubesInTwoBoxes() {
         return parse(EIGHT_CUBES.formatted("\"quantity\": 2,"));
     }

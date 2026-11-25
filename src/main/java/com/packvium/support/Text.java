@@ -1,13 +1,13 @@
 package com.packvium.support;
 
-/** String rules shared with the reference engines, which are ASCII-only where Java is not. */
+/** String rules shared with the Python and PHP engines, which are ASCII-only where Java is not. */
 public final class Text {
     private static final String TRIMMED = " \t\n\r\0\u000B";
 
     private Text() {
     }
 
-    /** Strips exactly the characters the reference engines strip; a no-break space survives. */
+    /** Strips exactly the characters the Python and PHP engines strip; a no-break space survives. */
     public static String trim(String value) {
         int start = 0;
         int end = value.length();

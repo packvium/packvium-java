@@ -17,10 +17,9 @@ import java.util.function.Function;
 /**
  * Lower bounds on the objective vector, and the gap against an incumbent.
  *
- * <p>The mathematics is fixed by docs/OPTIMALITY-CERTIFICATES.md. This is a port of the Python
- * implementation and is held to byte-identical results on the shared corpus, which is
- * what {@code conformance/scene/objective-bounds.json} exists to prove: Python writes the
- * vectors, this engine recomputes them from the same fixtures, and any divergence fails.
+ * <p>The mathematics is shared by every Packvium engine. This is a port of the Python
+ * implementation, and the test suite checks it against the vectors Python computed for
+ * the same inputs.
  *
  * <p>Arithmetic. A container's volume in ticks passes a 64-bit integer well before it reaches a
  * realistic size -- a one-metre cube is 4.1e21 cubic ticks -- so every volume, weight sum,
@@ -135,7 +134,7 @@ public final class ObjectiveBounds {
     /**
      * The same bounds, from the numbers the formulas actually consume.
      *
-     * <p>This is the shape {@code conformance/scene/objective-bounds.json} records, so that a
+     * <p>This is the shape the shared bounds test data records, so that a
      * port can be held to Python's vectors without first reimplementing a request parser. It
      * takes {@code shrinks} as given rather than deriving it: whether this engine decides that
      * flag correctly for a {@code convex_hull} is asserted separately, in this engine's own
@@ -256,7 +255,7 @@ public final class ObjectiveBounds {
      * {@code L2}: at least {@code L1} containers open, each costing at least the cheapest the
      * inventory still holds.
      *
-     * <p>The reference engines materialise {@code min(quantity, opened)} copies of each cost and
+     * <p>The Python engine materialises {@code min(quantity, opened)} copies of each cost and
      * sort them; taking the cheapest types first with their multiplicity selects the same
      * multiset in {@code O(c log c)} rather than {@code O(c * opened)}.
      */

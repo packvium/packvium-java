@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Revisions.java
+ *     java -cp target/packvium-1.6.0.jar examples/Revisions.java
  * </pre>
  *
  * <p>A plan is approved, and the dock starts loading. Then something changes: a slab is missing

@@ -94,9 +94,9 @@ class ObjectiveBoundsTest {
     void matchesTheSharedCorpus() throws IOException {
         String root = System.getenv("PACKVIUM_TAG_ROOT");
         assumeTrue(root != null, "PACKVIUM_TAG_ROOT not set");
-        Path scene = Path.of(root, "conformance", "scene", "objective-bounds.json");
-        assumeTrue(Files.exists(scene), "no objective-bounds scene at the tag");
-        Map<?, ?> document = (Map<?, ?>) JsonReader.parse(Files.readString(scene, StandardCharsets.UTF_8));
+        Path bounds = Path.of(root, "conformance", "scene", "objective-bounds.json");
+        assumeTrue(Files.exists(bounds), "no objective-bounds data at the tag");
+        Map<?, ?> document = (Map<?, ?>) JsonReader.parse(Files.readString(bounds, StandardCharsets.UTF_8));
         int checked = 0;
         for (Object raw : (List<?>) document.get("cases")) {
             Map<?, ?> scenario = (Map<?, ?>) raw;

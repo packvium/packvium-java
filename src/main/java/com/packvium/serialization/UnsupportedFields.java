@@ -1,7 +1,10 @@
 package com.packvium.serialization;
 
+import com.packvium.support.JsonValue;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -48,11 +51,52 @@ public record UnsupportedFields(
         collect(request.get("items"), "item", item, found);
         collect(request.get("containers"), "container", container, found);
         collectShapeTypes(request.get("items"), found);
+        found.addAll(madeToMeasureCombinations(request));
         if (found.isEmpty()) {
             return;
         }
         throw new UnsupportedFeatureException("unsupported_feature: the Java engine does not yet implement "
                 + String.join(", ", found) + "; the request was rejected instead of silently ignoring public fields");
+    }
+
+    /**
+     * The made-to-measure combinations 1.6 refuses: each reads
+     * a container dimension or position the fabricated box does not keep. Checked on the raw
+     * request, before any request error. O(containers + fixed placements).
+     */
+    static Set<String> madeToMeasureCombinations(Map<?, ?> request) {
+        Set<String> found = new TreeSet<>();
+        Set<Object> measured = new HashSet<>();
+        if (request.get("containers") instanceof List<?> containers) {
+            for (Object entry : containers) {
+                if (!(entry instanceof Map<?, ?> container) || container.get("made_to_measure") == null) {
+                    continue;
+                }
+                if (container.get("id") instanceof String id) {
+                    measured.add(id);
+                }
+                if (container.get("axles") != null) {
+                    found.add("container.made_to_measure+axles");
+                }
+                if (container.get("obstacles") instanceof List<?> obstacles && !obstacles.isEmpty()) {
+                    found.add("container.made_to_measure+obstacles");
+                }
+                Object reserve = container.get("void_fill_reserve_ratio");
+                if (JsonValue.isNumber(reserve) && ((Number) reserve).doubleValue() > 0) {
+                    found.add("container.made_to_measure+void_fill_reserve_ratio");
+                }
+            }
+        }
+        if (!measured.isEmpty() && request.get("fixed_placements") instanceof List<?> fixed) {
+            for (Object entry : fixed) {
+                if (entry instanceof Map<?, ?> placement && placement.get("container_type") instanceof String type
+                        && measured.contains(type)) {
+                    found.add("fixed_placements+container.made_to_measure");
+                    break;
+                }
+            }
+        }
+        return found;
     }
 
     private static void collect(Object entries, String scope, List<String> keys, TreeSet<String> found) {

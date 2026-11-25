@@ -2,11 +2,16 @@ package com.packvium.algorithm;
 
 import com.packvium.config.PackingConfig;
 import com.packvium.domain.Container;
+import com.packvium.domain.FlatBag;
+import com.packvium.domain.MadeToMeasure;
+import com.packvium.domain.Nesting;
+import com.packvium.domain.Sides;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.PackedContainer;
 import com.packvium.domain.Placement;
 import com.packvium.domain.UnpackedItem;
 import com.packvium.extension.ContainerSelector;
+import com.packvium.extension.DefaultContainerSelector;
 import com.packvium.objective.LandedCostSolutionScorer;
 import com.packvium.objective.ShippingCostSolutionScorer;
 import com.packvium.objective.ObjectiveRegistry;
@@ -130,7 +135,8 @@ final class ContainerPlanner {
                 }
                 SingleContainerSolution one;
                 try {
-                    one = solver.packOne(container, sequence.get(container.id()) + 1, remaining, config, stats, deadline);
+                    one = trial(solver, container, sequence.get(container.id()) + 1, remaining, config, stats,
+                            deadline).solution();
                 } catch (TimeLimitReached cut) {
                     reached = true;
                     break;
@@ -144,7 +150,7 @@ final class ContainerPlanner {
                     }
                     continue;
                 }
-                trials.add(new Trial(roundScore(container, one, remaining.size(), config), one));
+                trials.add(new Trial(roundScore(one, remaining.size(), config), one));
                 if (reached) {
                     break;
                 }
@@ -167,21 +173,34 @@ final class ContainerPlanner {
                 break;
             }
         }
-        List<UnpackedItem> unpacked = explainAll(remaining, containers, reached, packed, config);
+        List<UnpackedItem> unpacked = reasons.explainAll(remaining, containers, reached, packed, config);
         // Optimality may be claimed only when an exhaustive search filled a single container, the
         // cheapest, since containers are tried in cost order.
         boolean proven = exhaustive && !reached && unpacked.isEmpty() && packed.size() == 1;
         return new Outcome(packed, unpacked, proven, reached, dominantLattice);
     }
 
-    private SortKey roundScore(Container container, SingleContainerSolution one, int remainingCount,
-            PackingConfig config) {
+    /**
+     * The greedy round's key for one trial, read from the container the trial built: a
+     * made-to-measure trial carries its fabricated box, so the key prices the box that ships,
+     * never the machine maximum the loop declared.
+     */
+    private SortKey roundScore(SingleContainerSolution one, int remainingCount, PackingConfig config) {
+        Container container = one.state().container;
         boolean billed = config.objective().equals("shipping_cost")
                 || config.objective().equals(LandedCostSolutionScorer.OBJECTIVE_NAME);
         if (!billed || config.dimensionalWeightDivisor().isEmpty()) {
+            if (config.objective().equals("maximum_volume") && selector instanceof DefaultContainerSelector) {
+                // The round keeps the trial that loaded the most volume, not the one that seated
+                // the most pieces. A caller's own selector is left alone.
+                BigInteger used = one.state().usedVolume;
+                return SortKey.of(used.negate(), container.costMinor(),
+                        container.innerDimensions().volume().subtract(used), container.id());
+            }
             return selector.score(container, one);
         }
-        long billedTicks = ShippingCostSolutionScorer.billedTicks(container, one.state().payloadTicks, config);
+        long billedTicks = ShippingCostSolutionScorer.billedTicks(container, one.state().billedDimensions(),
+                one.state().payloadTicks, config);
         long placed = one.state().placementCount();
         if (config.objective().equals("shipping_cost")) {
             return SortKey.of(-placed, billedTicks, container.id());
@@ -192,6 +211,82 @@ final class ContainerPlanner {
         long charge = LandedCostSolutionScorer.chargeOrUnpriceable(container, billedTicks);
         long perContainer = Math.max(placed, 1);
         return SortKey.of(charge, (remainingCount + perContainer - 1) / perContainer, -placed, container.id());
+    }
+
+    /** One container's trial for a round, and how many single-container solves it spent. */
+    private record Solved(SingleContainerSolution solution, long solves) {
+    }
+
+    /**
+     * A declared container is one solve; a made-to-measure one runs the rung chain and returns
+     * its trial already fabricated.
+     */
+    private Solved trial(SingleContainerSolver solver, Container container, long sequence, List<ItemInstance> items,
+            PackingConfig config, SearchStats stats, Deadline deadline) {
+        if (container.madeToMeasure().isEmpty()) {
+            return new Solved(solver.packOne(container, sequence, items, config, stats, deadline), 1);
+        }
+        return madeToMeasureTrial(solver, container, sequence, items, config, stats, deadline);
+    }
+
+    /**
+     * Try each solving envelope in ascending order and keep the first that places every item;
+     * failing that, the trial this round's own key prefers, the smaller rung on a tie. At most four
+     * solves, two trial states alive. A compact lattice cannot describe a box cut to the achieved
+     * extent, so the rung solves always report coordinates, and a rung choice is a heuristic, so
+     * the trial is never exhaustive.
+     */
+    private Solved madeToMeasureTrial(SingleContainerSolver solver, Container container, long sequence,
+            List<ItemInstance> items, PackingConfig config, SearchStats stats, Deadline deadline) {
+        MadeToMeasure machine = container.madeToMeasure().orElseThrow();
+        List<Sides> rungs = machine.solvingEnvelopes(Sides.of(container.innerDimensions()),
+                MadeToMeasure.instanceEdges(items, config.clearance().ticks()));
+        PackingConfig rungConfig = config.requirePlacementCoordinates() ? config : config.withPlacementCoordinates();
+        SingleContainerSolution best = null;
+        SortKey bestKey = null;
+        SingleContainerSolution last = null;
+        boolean stopped = false;
+        long solves = 0;
+        for (Sides rung : rungs) {
+            SingleContainerSolution one;
+            try {
+                one = solver.packOne(container.withEnvelope(rung), sequence, items, rungConfig, stats, deadline);
+            } catch (TimeLimitReached cut) {
+                if (best == null) {
+                    throw cut;
+                }
+                stopped = true;
+                break;
+            }
+            solves++;
+            stopped = one.timeLimitReached();
+            last = one;
+            if (one.state().placementCount() > 0) {
+                SingleContainerSolution fabricated = fabricated(container, one);
+                if (one.state().placementCount() == items.size()) {
+                    return new Solved(fabricated, solves);
+                }
+                SortKey key = roundScore(fabricated, items.size(), config);
+                if (best == null || key.compareTo(bestKey) < 0) {
+                    best = fabricated;
+                    bestKey = key;
+                }
+            }
+            if (stopped || deadline.expired()) {
+                stopped = true;
+                break;
+            }
+        }
+        SingleContainerSolution chosen = best != null ? best : last;
+        return new Solved(new SingleContainerSolution(chosen.state(), chosen.unpacked(), chosen.exhaustive(),
+                chosen.timeLimitReached() || stopped, chosen.dominantLattice()), solves);
+    }
+
+    /** A rung trial as the box cut for it: the achieved extent of its placements on the grid. O(p). */
+    private static SingleContainerSolution fabricated(Container declared, SingleContainerSolution one) {
+        Container box = declared.fabricate(FlatBag.extentOf(one.state().placements));
+        return new SingleContainerSolution(one.state().withContainer(box), one.unpacked(), false,
+                one.timeLimitReached(), false);
     }
 
     private record Trial(SortKey score, SingleContainerSolution solution) {
@@ -217,15 +312,6 @@ final class ContainerPlanner {
         List<Placement> withLoads = TopLoadAssigner.assign(state.placements);
         return new Committed(new PackedContainer(container, state.sequence, withLoads, Optional.empty(),
                 List.of()), ids);
-    }
-
-    private List<UnpackedItem> explainAll(List<ItemInstance> remaining, List<Container> containers, boolean reached,
-            List<PackedContainer> packed, PackingConfig config) {
-        List<UnpackedItem> unpacked = new ArrayList<>();
-        for (ItemInstance item : remaining) {
-            unpacked.add(reasons.explain(item, containers, reached, packed, config));
-        }
-        return unpacked;
     }
 
     /**
@@ -271,12 +357,16 @@ final class ContainerPlanner {
                     if (left != null && left <= 0) {
                         continue;
                     }
-                    nodes++;
                     SingleContainerSolution one;
                     try {
-                        one = solver.packOne(container, plan.sequences().get(container.id()) + 1, plan.remaining(),
-                                config, stats, deadline);
+                        Solved solved = trial(solver, container, plan.sequences().get(container.id()) + 1,
+                                plan.remaining(), config, stats, deadline);
+                        one = solved.solution();
+                        // Each rung is one single-container solve, so the node limit keeps bounding
+                        // the work of a made-to-measure chain.
+                        nodes += solved.solves();
                     } catch (TimeLimitReached cut) {
+                        nodes++;
                         reached = true;
                         break;
                     }
@@ -302,7 +392,8 @@ final class ContainerPlanner {
             }
             beam = nextBeam(expansions, containers, config);
         }
-        List<UnpackedItem> unpacked = explainAll(incumbent.remaining(), containers, reached, incumbent.packed(), config);
+        List<UnpackedItem> unpacked = reasons.explainAll(incumbent.remaining(), containers, reached,
+                incumbent.packed(), config);
         boolean proven = incumbent.exhaustive() && !reached && unpacked.isEmpty() && incumbent.packed().size() == 1;
         return new Outcome(incumbent.packed(), unpacked, proven, reached, incumbent.dominant());
     }
@@ -374,7 +465,8 @@ final class ContainerPlanner {
             BigInteger capacity = available.stream().map(container -> container.innerDimensions().volume())
                     .reduce(BigInteger.ZERO, BigInteger::max);
             if (capacity.signum() > 0) {
-                BigInteger required = plan.remaining().stream().map(item -> item.dimensions().volume())
+                // A hull counts its own solid, as the beam and exact floors do.
+                BigInteger required = plan.remaining().stream().map(Nesting::itemOccupiedVolume)
                         .reduce(BigInteger.ZERO, BigInteger::add);
                 lower = Math.max(lower, required.add(capacity).subtract(BigInteger.ONE).divide(capacity).longValueExact());
             }

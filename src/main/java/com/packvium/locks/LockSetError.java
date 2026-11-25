@@ -17,7 +17,7 @@ package com.packvium.locks;
 public final class LockSetError extends IllegalArgumentException {
     private static final long serialVersionUID = 1L;
 
-    /** @param message the contradiction, worded as the reference engine words it */
+    /** @param message the contradiction, worded as the Python engine words it */
     public LockSetError(String message) {
         super(message);
     }

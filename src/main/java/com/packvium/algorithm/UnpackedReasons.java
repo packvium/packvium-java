@@ -6,7 +6,10 @@ import com.packvium.constraint.PlacementConstraint;
 import com.packvium.constraint.ProvenRejection;
 import com.packvium.constraint.Violation;
 import com.packvium.constraint.SupportConstraint;
+import com.packvium.constraint.AxleLoad;
 import com.packvium.domain.Container;
+import com.packvium.domain.Dimensions;
+import com.packvium.domain.FlatBag;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.OrientedDimensions;
 import com.packvium.domain.PackedContainer;
@@ -14,7 +17,10 @@ import com.packvium.domain.Placement;
 import com.packvium.domain.Rotation;
 import com.packvium.domain.UnpackedItem;
 import com.packvium.extension.CandidateScorer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Why an item ended up unpacked, proven where pure geometry can prove it. */
@@ -27,13 +33,106 @@ final class UnpackedReasons {
         this.scorer = scorer;
     }
 
-    UnpackedItem explain(ItemInstance item, List<Container> containers, boolean reached, List<PackedContainer> packed,
-            PackingConfig config) {
+    /** Every left-out item's reason, against one final layout read once. */
+    List<UnpackedItem> explainAll(List<ItemInstance> items, List<Container> containers, boolean reached,
+            List<PackedContainer> packed, PackingConfig config) {
+        Map<String, Long> opened = openedByType(packed);
+        List<UnpackedItem> unpacked = new ArrayList<>(items.size());
+        for (ItemInstance item : items) {
+            unpacked.add(explain(item, containers, reached, packed, opened, config));
+        }
+        return unpacked;
+    }
+
+    private UnpackedItem explain(ItemInstance item, List<Container> containers, boolean reached,
+            List<PackedContainer> packed, Map<String, Long> opened, PackingConfig config) {
         Reason reason = reason(item, containers, reached);
         String code = reason.code().equals("no_feasible_placement") && supportIsTheBlocker(item, packed, config)
                 ? "insufficient_support"
                 : reason.code();
+        if (code.equals("no_feasible_placement")) {
+            code = limitReason(item, containers, opened, config).orElse(code);
+        }
         return new UnpackedItem(item, code, reason.details());
+    }
+
+    /** How many containers of each template a layout opened. O(P). */
+    private static Map<String, Long> openedByType(List<PackedContainer> packed) {
+        Map<String, Long> opened = new HashMap<>();
+        packed.forEach(container -> opened.merge(container.container().id(), 1L, Long::sum));
+        return opened;
+    }
+
+    /**
+     * The container limit that left {@code item} out, for the no_feasible_placement fallback
+     *, or empty when no limit explains it.
+     *
+     * <p>Only containers that admit the item on every structural count -- a fitting rotation, its
+     * weight, its eligibility tags -- are asked. When an axle refuses the item alone in every one of
+     * them, the axle is the reason. Otherwise, when every one that would take it alone is out of
+     * stock, or max_containers is reached, the reason is the inventory: max_items, cumulative
+     * max_payload, tag_limits, stop access and an axle's share of a full load can only refuse an
+     * item a fresh container would take. O(C*R) for C templates and R rotations.
+     */
+    private static Optional<String> limitReason(ItemInstance item, List<Container> containers,
+            Map<String, Long> opened, PackingConfig config) {
+        List<Dimensions> envelopes = item.dimensions().uniqueRotations(item.item().allowedRotations()).stream()
+                .map(oriented -> oriented.dimensions().expand(config.clearance())).toList();
+        long weight = item.weight().ticks();
+        List<String> eligibleTags = item.item().eligibleContainerTags();
+        boolean compatible = false;
+        List<Container> admitting = new ArrayList<>();
+        for (Container container : containers) {
+            List<Dimensions> fitting = envelopes.stream().filter(envelope -> fitsAlone(container, envelope)).toList();
+            if (fitting.isEmpty()) {
+                continue;
+            }
+            if (container.maxPayload().isPresent() && weight > container.maxPayload().get().ticks()) {
+                continue;
+            }
+            if (!eligibleTags.isEmpty() && eligibleTags.stream().noneMatch(container.tags()::contains)) {
+                continue;
+            }
+            compatible = true;
+            if (axlesAdmitAlone(container, fitting, weight)) {
+                admitting.add(container);
+            }
+        }
+        if (!compatible) {
+            return Optional.empty();
+        }
+        if (admitting.isEmpty()) {
+            return Optional.of("axle_overloaded");
+        }
+        long total = opened.values().stream().mapToLong(Long::longValue).sum();
+        if (config.maxContainers().isPresent() && total >= config.maxContainers().get()) {
+            return Optional.of("container_inventory_exhausted");
+        }
+        boolean exhausted = admitting.stream().allMatch(container -> container.quantity().isPresent()
+                && opened.getOrDefault(container.id(), 0L) >= container.quantity().get());
+        return exhausted ? Optional.of("container_inventory_exhausted") : Optional.empty();
+    }
+
+    private static boolean axlesAdmitAlone(Container container, List<Dimensions> envelopes, long weight) {
+        if (container.axles().isEmpty()) {
+            return true;
+        }
+        for (Dimensions envelope : envelopes) {
+            if (AxleLoad.admitsAlone(container.axles().get(), container.tareWeight().ticks(),
+                    container.innerDimensions().length().ticks(), weight, envelope.length().ticks())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether one box of these dimensions fits this container empty: the frame, and for a flat bag
+     * the girth rule too, so a bag too thin for an item proves it unplaceable.
+     */
+    static boolean fitsAlone(Container container, Dimensions dimensions) {
+        return container.isFlatBag() ? FlatBag.fitsAlone(container.innerDimensions(), dimensions)
+                : dimensions.fitsInside(container.innerDimensions());
     }
 
     record Reason(String code, List<String> details) {
@@ -92,7 +191,7 @@ final class UnpackedReasons {
     private static boolean fitsSomewhere(ItemInstance item, List<Container> containers, List<Rotation> rotations) {
         for (Container container : containers) {
             for (OrientedDimensions oriented : item.dimensions().uniqueRotations(rotations)) {
-                if (oriented.dimensions().fitsInside(container.innerDimensions())) {
+                if (fitsAlone(container, oriented.dimensions())) {
                     return true;
                 }
             }

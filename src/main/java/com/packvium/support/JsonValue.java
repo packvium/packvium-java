@@ -10,7 +10,7 @@ import java.util.Optional;
 
 /**
  * Judgements over a decoded JSON tree ({@code Map}, {@code List}, {@code String}, {@code Boolean},
- * {@code Long}, {@code BigInteger}, {@code BigDecimal}, null) that four engines must make alike.
+ * {@code Long}, {@code BigInteger}, {@code BigDecimal}, null) that every engine must make alike.
  */
 public final class JsonValue {
     private static final BigInteger MAX_EXACT = BigInteger.valueOf(CanonicalJson.MAX_EXACT_MAGNITUDE);

@@ -28,8 +28,8 @@ import java.util.Optional;
  * <p>Each entry point loads the caller's commerce document into the rating, policy and
  * catalog registries, asks them the question and serializes the answer. No price,
  * decision or version resolution is computed here. The contract -- request shapes,
- * result shapes, rejection codes, complexity and limitations -- is docs/COMMERCE-API.md,
- * and this port is held to byte-identical canonical output against the PHP port.
+ * result shapes, rejection codes, complexity and limitations -- is shared by every Packvium
+ * engine, and this port gives byte-identical canonical output to the PHP one.
  *
  * <p>{@link Commerce} is the public spelling; these static methods are the same code
  * behind it.
@@ -37,7 +37,7 @@ import java.util.Optional;
 public final class Api {
     public static final long API_VERSION = 1;
 
-    /** The closed set of rejection codes, in the order docs/COMMERCE-API.md tabulates them. */
+    /** The closed set of rejection codes, in the order the commerce contract lists them. */
     public static final List<String> REJECTION_CODES = List.of(
             "tariff_not_found",
             "no_effective_tariff",

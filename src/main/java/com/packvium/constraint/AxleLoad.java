@@ -116,6 +116,29 @@ public final class AxleLoad {
         return List.copyOf(origins);
     }
 
+    /**
+     * Whether one item, alone in an empty container, has an x-origin that overloads neither axle
+     *. Each limit is linear in the item's doubled centre, so the feasible origins form
+     * one interval whose two ends {@link #axleBalancedOrigins} gives exactly. O(1). A statement
+     * about an empty container, not a proof: a counterweight behind the rear axle can relieve the
+     * front one.
+     */
+    public static boolean admitsAlone(AxlePair axles, long tareWeightTicks, long innerLengthTicks,
+            long itemWeightTicks, long envelopeLengthTicks) {
+        long lastOrigin = innerLengthTicks - envelopeLengthTicks;
+        if (lastOrigin < 0) {
+            return false;
+        }
+        if (itemWeightTicks <= 0) {
+            return exceeded(axles, List.of(), tareWeightTicks, innerLengthTicks).isEmpty();
+        }
+        List<Long> origins = axleBalancedOrigins(axles, List.of(), tareWeightTicks, innerLengthTicks,
+                itemWeightTicks, envelopeLengthTicks);
+        long lowest = axles.front().maxLoad().isPresent() ? origins.get(0) : 0;
+        long highest = axles.rear().maxLoad().isPresent() ? origins.get(origins.size() - 1) : lastOrigin;
+        return Math.max(0, lowest) <= Math.min(lastOrigin, highest);
+    }
+
     private static BigInteger totalWeight(List<LoadUnit> units, long tareWeightTicks) {
         BigInteger total = big(tareWeightTicks);
         for (LoadUnit unit : units) {
@@ -146,7 +169,7 @@ public final class AxleLoad {
         return floorDiv(numerator.negate(), denominator).negate();
     }
 
-    /** The reference engine's {@code (int)} of an integer string clamps rather than wraps. */
+    /** PHP's {@code (int)} of an integer string clamps rather than wraps. */
     private static long saturatingLong(BigInteger value) {
         return value.max(LONG_MIN).min(LONG_MAX).longValue();
     }

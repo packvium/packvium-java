@@ -25,7 +25,7 @@
     toner     WHL  at (6720000, 4800000, 0)
 
   Every placement is listed and not one is numbered. The engines compute a safe
-  loading order from geometry this adapter never sees, so without one it says
+  loading order from geometry the plan builder never sees, so without one it says
   `unavailable` rather than guessing.
 
   There is no third behaviour on purpose. Falling back to the order placements
@@ -41,7 +41,7 @@
 
   Hand it an order and each step is numbered. The order above is reversed on
   purpose, to show that the sequence is the one you supplied and not one the
-  adapter re-derived behind your back.
+  plan builder re-derived behind your back.
 
 ==============================================================================
 3. Every sentence names the fields it was built from
@@ -64,15 +64,15 @@
   canonical form: 1877 bytes, first 68 of them
     {"alternatives":[{"facts":{"alternative_index":0,"first_difference":...
 
-  Hand the same *result* to any Packvium adapter, this one included, and it emits
+  Hand the same *result* to any Packvium engine, this one included, and it emits
   the same bytes. That is stricter than the packing contract, and it can be: a
   plan is derived from a result, so there is nothing left to differ about.
 
-  It does not follow that every engine packing the same *request* agrees. This
-  engine, like Python and PHP, is held to identical placements and produces this
-  exact form; the Rust and JavaScript engines are held to a valid answer at or
-  above the objective floor, so their plan for this request can be a different
-  length. Whose packing is better is a question the plan never answers.
+  It does not follow that every engine packing the same *request* agrees. Python,
+  PHP, Java, .NET and Go return identical results at the same version; Rust and
+  JavaScript return a valid answer at or above the objective floor, so their plan
+  for this request can be a different length. Whose packing is better is a
+  question the plan never answers.
 
 ==============================================================================
 5. The operator pins a box, and gets a second plan — never an edited one

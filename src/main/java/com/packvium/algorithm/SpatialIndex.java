@@ -22,7 +22,7 @@ public final class SpatialIndex {
     private static final int[] NONE = new int[0];
     /**
      * Answers kept per index between insertions. Every live search state owns its index, so the
-     * cache multiplies by the beam; the reference engine measured 64 as holding its 1.4.0 peak.
+     * cache multiplies by the beam; PHP measured 64 as holding its 1.4.0 peak.
      */
     private static final int QUERY_CACHE_LIMIT = 64;
 

@@ -46,7 +46,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 /**
  * Operator locks, ported from the reference's tests/test_locks.py.
  *
- * <p>docs/EXECUTION-PLAN.md names four properties, and each is a thing the layer must <em>not</em>
+ * <p>The execution-plan contract names four properties, and each is a thing the layer must <em>not</em>
  * do, so the suite is written against the failure modes: a lock must not change the approved plan;
  * it must not place anything the engine would refuse; an unsatisfiable lock must come back as a
  * result, not an exception; and preservation must be measured. A fifth was found by the

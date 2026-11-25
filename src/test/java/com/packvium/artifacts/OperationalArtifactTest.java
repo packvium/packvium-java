@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
  * The operational artifact and its exports, holding the properties PHP's
  * OperationalArtifactTest holds at v1.3.0.
  *
- * <p>The assertions follow what docs/OPERATIONAL-ARTIFACTS.md promises the artifact will not do:
+ * <p>The assertions follow what the operational-artifact contract promises the artifact will not do:
  * re-derive the plan or its order, address a placement by {@code item_id}, let wall-clock time
  * in, claim an exact replay it cannot give, or re-render a value the result already rendered.
  * Byte equality with Python is asserted by the artifact conformance run over the tag's corpus and
@@ -177,7 +177,7 @@ class OperationalArtifactTest {
     void thePlanInsideIsExactlyThePlanBuilderOutput() {
         Map<String, Object> artifact = artifact();
         assertEquals(OperationalArtifact.FORMAT, artifact.get("format"));
-        assertEquals("1.5.0", artifact.get("suite_version"));
+        assertEquals("1.6.0", artifact.get("suite_version"));
         assertEquals(Plan.canonicalJson(Plan.build(request(), result(), REVERSED)),
                 Plan.canonicalJson(asMap(artifact.get("plan"))));
     }

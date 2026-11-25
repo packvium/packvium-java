@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Execution.java
+ *     java -cp target/packvium-1.6.0.jar examples/Execution.java
  * </pre>
  *
  * <p>{@code pack()} answers where every box goes. That answer is not yet a work order: it does
@@ -25,12 +25,11 @@ import java.util.stream.Collectors;
  * the printer must go in the corner.
  *
  * <p>The execution plan is that second document. It is derived from an already validated result
- * -- it calls no solver and no validator, and a test in each language asserts so. Anything it
- * could decide on its own would be a decision made twice.
+ * -- it calls no solver and no validator. Anything it could decide on its own would be a
+ * decision made twice.
  *
- * <p>The scene below is the same one the PHP and Python examples build, and the plan is held to
- * a byte-identical canonical form across the engines. Sections 5 and 6 follow the Python example
- * into operator locks.
+ * <p>Every Packvium engine builds the same plan from the same result, byte for byte in its
+ * canonical form. Sections 5 and 6 go on to operator locks.
  */
 public final class Execution {
     private static final String RULE = "=".repeat(78);
@@ -41,7 +40,7 @@ public final class Execution {
         // what is *not* going on the truck as clearly as what is.
         Map<String, Object> request = Map.of(
                 "units", Map.of("length", "mm"),
-                // `time_limit_ms` is a safety fuse, not a target -- nothing in this scene comes
+                // `time_limit_ms` is a safety fuse, not a target -- nothing in this request comes
                 // close to it.
                 "configuration", Map.of("objective", "default", "solver_profile", "balanced", "seed", 42L,
                         "time_limit_ms", 60_000L),
@@ -85,7 +84,7 @@ public final class Execution {
         }
         System.out.print("\n");
         System.out.print("  Every placement is listed and not one is numbered. The engines compute a safe\n");
-        System.out.print("  loading order from geometry this adapter never sees, so without one it says\n");
+        System.out.print("  loading order from geometry the plan builder never sees, so without one it says\n");
         System.out.print("  `unavailable` rather than guessing.\n");
         System.out.print("\n");
         System.out.print("  There is no third behaviour on purpose. Falling back to the order placements\n");
@@ -107,7 +106,7 @@ public final class Execution {
         System.out.print("\n");
         System.out.print("  Hand it an order and each step is numbered. The order above is reversed on\n");
         System.out.print("  purpose, to show that the sequence is the one you supplied and not one the\n");
-        System.out.print("  adapter re-derived behind your back.\n");
+        System.out.print("  plan builder re-derived behind your back.\n");
         System.out.print("\n");
 
         section("3. Every sentence names the fields it was built from");
@@ -133,15 +132,15 @@ public final class Execution {
                 canonical.getBytes(StandardCharsets.UTF_8).length);
         System.out.printf("    %s...\n", canonical.substring(0, 68));
         System.out.print("\n");
-        System.out.print("  Hand the same *result* to any Packvium adapter, this one included, and it emits\n");
+        System.out.print("  Hand the same *result* to any Packvium engine, this one included, and it emits\n");
         System.out.print("  the same bytes. That is stricter than the packing contract, and it can be: a\n");
         System.out.print("  plan is derived from a result, so there is nothing left to differ about.\n");
         System.out.print("\n");
-        System.out.print("  It does not follow that every engine packing the same *request* agrees. This\n");
-        System.out.print("  engine, like Python and PHP, is held to identical placements and produces this\n");
-        System.out.print("  exact form; the Rust and JavaScript engines are held to a valid answer at or\n");
-        System.out.print("  above the objective floor, so their plan for this request can be a different\n");
-        System.out.print("  length. Whose packing is better is a question the plan never answers.\n");
+        System.out.print("  It does not follow that every engine packing the same *request* agrees. Python,\n");
+        System.out.print("  PHP, Java, .NET and Go return identical results at the same version; Rust and\n");
+        System.out.print("  JavaScript return a valid answer at or above the objective floor, so their plan\n");
+        System.out.print("  for this request can be a different length. Whose packing is better is a\n");
+        System.out.print("  question the plan never answers.\n");
         System.out.print("\n");
 
         section("5. The operator pins a box, and gets a second plan — never an edited one");

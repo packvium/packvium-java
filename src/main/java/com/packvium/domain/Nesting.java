@@ -115,6 +115,20 @@ public final class Nesting {
         return BigInteger.valueOf(footprint).multiply(BigInteger.valueOf(height));
     }
 
+    /**
+     * The volume {@link #occupiedVolume} counts for this item before it is placed, in any
+     * orientation. A hull occupies its authored solid and a proper rotation keeps that volume, so
+     * one orientation answers for all six through the memoised shape. A compressible item keeps
+     * its declared box, so placed boxes never share space and their volumes stay additive.
+     */
+    public static BigInteger itemOccupiedVolume(ItemInstance instance) {
+        Item item = instance.item();
+        if (item.shapeType() == ShapeType.CONVEX_HULL) {
+            return HullShape.shapeFor(item.hullVertices().orElseThrow(), Rotation.LWH).volume();
+        }
+        return instance.dimensions().volume();
+    }
+
     /** Physical volume actually occupied by {@code placements}, nesting overlap removed. O(n log n). */
     public static BigInteger usedVolume(List<Placement> placements) {
         BigInteger total = BigInteger.ZERO;

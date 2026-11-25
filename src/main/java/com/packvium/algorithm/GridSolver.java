@@ -60,7 +60,10 @@ public final class GridSolver implements SingleContainerSolver {
                 item.nestingHeight().map(height -> height.ticks()).orElse(null), item.group().orElse(null),
                 // Fusing a column limit of 1 with an unlimited item, or stop 0 with stop 1, would
                 // produce a tiling neither allows.
-                item.maxStackedItems().orElse(null), item.stopIndex().orElse(null));
+                item.maxStackedItems().orElse(null), item.stopIndex().orElse(null),
+                // A lattice joins same-type items only, so two types may share one exactly when
+                // they share the stacking rule as well.
+                item.stackingGroup().orElse(null), sorted(item.acceptsStackingGroups()));
     }
 
     private static List<String> sorted(List<String> values) {
@@ -144,14 +147,17 @@ public final class GridSolver implements SingleContainerSolver {
         }
         // Stack density needs the cumulative column load, axles the changing moment, and a hull
         // or a compressible item per-candidate geometry: the closed form sees none of them.
-        return container.voidFillReserveRatio() > 0 || container.maxStackDensity().isPresent()
+        // A bag's girth rule couples the axes, which the per-candidate check applies exactly.
+        return container.voidFillReserveRatio() > 0 || container.isFlatBag() || container.maxStackDensity().isPresent()
                 || container.axles().isPresent() || prototype.shapeType() != ShapeType.RIGID_CUBOID;
     }
 
     private static Lattice bestLattice(Container container, Item prototype, PackingConfig config) {
         // Every non-floor cell has one full-area direct supporter, which satisfies ratio 1,
         // covered and single; multiple is satisfiable only on the floor, so cap the layers.
-        boolean singleLayer = prototype.mustBeOnFloor() || !prototype.stackable()
+        // Every lattice edge joins two items of this type, so the stacking-group rule holds for the
+        // whole lattice exactly when the type carries itself.
+        boolean singleLayer = prototype.mustBeOnFloor() || !prototype.carriesItself()
                 || Objects.equals(prototype.groundContactRule().orElse(null), "multiple");
         // Zero unless the item sinks into an identical one beneath it.
         long nestingTicks = prototype.nestingHeight().map(height -> height.ticks()).orElse(0L);

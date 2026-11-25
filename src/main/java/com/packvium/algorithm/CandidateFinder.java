@@ -228,6 +228,7 @@ public final class CandidateFinder {
         private final boolean stackSensitive;
         private final boolean routeSensitive;
         private final int placementOffset;
+        private final boolean bag;
         private final List<Candidate> found = new ArrayList<>();
         /** With a cap above one: the best {@code max} so far, worst on top, so it is the one evicted. */
         private final PriorityQueue<Ranked> retained;
@@ -238,6 +239,7 @@ public final class CandidateFinder {
                 SearchStats stats, Deadline deadline, CandidateScorer scorer, Optional<Integer> max,
                 boolean compressionSensitive, boolean reserveNeedsCandidate) {
             this.state = state;
+            this.bag = state.container.isFlatBag();
             this.item = item;
             this.config = config;
             this.stats = stats;
@@ -269,6 +271,16 @@ public final class CandidateFinder {
             }
         }
 
+        /**
+         * A flat bag also needs a + c <= L and b + c <= W over the running extents grown by the
+         * candidate: O(1), and the extents only grow, so no verdict flips.
+         */
+        private boolean bagAdmits(Dimensions inner, long x2, long y2, long z2) {
+            long thickness = Math.max(z2, state.maxZ);
+            return Math.max(x2, state.maxX) + thickness <= inner.length().ticks()
+                    && Math.max(y2, state.maxY) + thickness <= inner.width().ticks();
+        }
+
         void visit(Point point, List<Form> forms) {
             deadline.check();
             stats.candidatePointsConsidered++;
@@ -279,6 +291,9 @@ public final class CandidateFinder {
                 long y2 = point.y() + form.dy();
                 long z2 = point.z() + form.dz();
                 if (x2 > inner.length().ticks() || y2 > inner.width().ticks() || z2 > inner.height().ticks()) {
+                    continue;
+                }
+                if (bag && !bagAdmits(inner, x2, y2, z2)) {
                     continue;
                 }
                 long clearance = config.clearance().ticks();

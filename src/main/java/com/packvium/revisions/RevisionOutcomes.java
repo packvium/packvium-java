@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * Approved plan revisions as labeled evidence for historical evaluation.
  *
- * <p>Held to {@code packvium.revision_outcomes}. A revision records what differed from an approved
+ * <p>A revision records what differed from an approved
  * plan; this appends those records to an {@link OutcomeLedger}, where {@code com.packvium.holdout}
  * already evaluates recommendations on untouched history. It adds no second evaluator and no
  * second store. Three properties carry the acceptance, each structural rather than a check:

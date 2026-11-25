@@ -19,7 +19,7 @@ public record RateBreakdown(String carrierId, String serviceId, long tariffVersi
         accessorialChargesMinor = List.copyOf(accessorialChargesMinor);
     }
 
-    /** The wire shape docs/COMMERCE-API.md specifies. */
+    /** The wire shape the commerce contract specifies. */
     public Map<String, Object> toArray() {
         List<Object> charges = new ArrayList<>(accessorialChargesMinor.size());
         for (Map.Entry<String, Long> charge : accessorialChargesMinor) {

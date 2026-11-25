@@ -20,7 +20,7 @@ import java.util.Set;
  * cells. Bucket iteration order never reaches output: every caller sorts its matches by index.
  */
 public final class ContactLevelIndex {
-    /** One indexed box and its position in the scene. */
+    /** One indexed box and its position in the layout. */
     public record Entry(int index, AxisAlignedBox box) {
     }
 

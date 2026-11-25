@@ -4,6 +4,7 @@ import com.packvium.config.PackingConfig;
 import com.packvium.constraint.PlacementConstraint;
 import com.packvium.domain.Container;
 import com.packvium.domain.ItemInstance;
+import com.packvium.domain.Nesting;
 import com.packvium.domain.Placement;
 import com.packvium.extension.CandidateScorer;
 import com.packvium.support.SortKey;
@@ -37,6 +38,7 @@ public final class BeamPacker {
         if (width == 1) {
             return packLegacy(container, sequence, items, config, constraints, stats, deadline, scorer, branchWidth);
         }
+        boolean byVolume = ranksByVolume(config);
         long nodeLimit = config.containerPlanNodeLimit();
         long nodes = 0;
         List<List<ItemInstance>> batches = GroupBatcher.batches(items);
@@ -44,8 +46,9 @@ public final class BeamPacker {
         Node incumbent = greedyRollout(container, sequence, batches, config, constraints, stats, deadline, scorer);
         // nodeKey builds an O(m) placement signature; computing it once per node instead of once
         // per comparison changes no ordering.
-        SortKey incumbentKey = nodeKey(incumbent, FutureBound.NONE);
+        SortKey incumbentKey = nodeKey(incumbent, FutureBound.NONE, byVolume);
         long incumbentUnplaced = incumbent.unplaced().size();
+        BigInteger incumbentUsed = incumbent.state().usedVolume;
         for (int position = 0; position < batches.size(); position++) {
             List<ItemInstance> batch = batches.get(position);
             List<Node> expansions = new ArrayList<>();
@@ -72,32 +75,36 @@ public final class BeamPacker {
             List<ItemInstance> future = GroupBatcher.flatten(batches.subList(position + 1, batches.size()));
             for (Node expansion : expansions) {
                 long unplacedCount = expansion.unplaced().size() + future.size();
-                // More unplaced items loses on the key's first component whatever follows, so the
-                // O(m) signature is built only for a candidate that can win.
-                if (unplacedCount > incumbentUnplaced) {
+                // A worse leading component -- more unplaced items, or under maximum_volume less
+                // used volume -- loses whatever follows, so the O(m) signature is built only for a
+                // candidate that can win.
+                if (byVolume ? expansion.state().usedVolume.compareTo(incumbentUsed) < 0
+                        : unplacedCount > incumbentUnplaced) {
                     continue;
                 }
                 // The key of the expansion with every future item unplaced, without building that
                 // O(n) list for a candidate that rarely wins.
-                SortKey candidateKey = nodeKey(expansion.state(), unplacedCount, FutureBound.NONE);
+                SortKey candidateKey = nodeKey(expansion.state(), unplacedCount, FutureBound.NONE, byVolume);
                 if (candidateKey.compareTo(incumbentKey) < 0) {
                     incumbent = new Node(expansion.state(), concat(expansion.unplaced(), future));
                     incumbentKey = candidateKey;
                     incumbentUnplaced = unplacedCount;
+                    incumbentUsed = expansion.state().usedVolume;
                 }
             }
             if (expansions.isEmpty()) {
                 break;
             }
             FutureBound bound = FutureBound.of(future, container.maxPayload().map(Weight::ticks));
-            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, bound)), width);
+            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, bound, byVolume)), width);
             if (exhausted) {
                 return new SingleContainerSolution(incumbent.state(), incumbent.unplaced(), false, deadline.expired(),
                         false);
             }
         }
-        List<Node> ordered = StableSorter.sortBy(beam, node -> nodeKey(node, FutureBound.NONE));
-        Node chosen = !ordered.isEmpty() && nodeKey(ordered.get(0), FutureBound.NONE).compareTo(incumbentKey) < 0
+        List<Node> ordered = StableSorter.sortBy(beam, node -> nodeKey(node, FutureBound.NONE, byVolume));
+        Node chosen = !ordered.isEmpty()
+                && nodeKey(ordered.get(0), FutureBound.NONE, byVolume).compareTo(incumbentKey) < 0
                 ? ordered.get(0)
                 : incumbent;
         return new SingleContainerSolution(chosen.state(), chosen.unplaced());
@@ -133,6 +140,7 @@ public final class BeamPacker {
     private static SingleContainerSolution packLegacy(Container container, long sequence, List<ItemInstance> items,
             PackingConfig config, List<PlacementConstraint> constraints, SearchStats stats, Deadline deadline,
             CandidateScorer scorer, int width) {
+        boolean byVolume = ranksByVolume(config);
         List<List<ItemInstance>> batches = GroupBatcher.batches(items);
         List<Node> beam = List.of(new Node(new ContainerState(container, sequence), List.of()));
         for (int position = 0; position < batches.size(); position++) {
@@ -154,7 +162,7 @@ public final class BeamPacker {
                     children.forEach(child -> expansions.add(new Node(child, node.unplaced())));
                 }
             }
-            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, FutureBound.NONE)), width);
+            beam = first(StableSorter.sortBy(expansions, node -> nodeKey(node, FutureBound.NONE, byVolume)), width);
             if (exhausted) {
                 Node best = beam.get(0);
                 List<ItemInstance> pending = GroupBatcher.flatten(batches.subList(position + 1, batches.size()));
@@ -210,11 +218,20 @@ public final class BeamPacker {
         return child;
     }
 
-    private static SortKey nodeKey(Node node, FutureBound future) {
-        return nodeKey(node.state(), node.unplaced().size(), future);
+    private static boolean ranksByVolume(PackingConfig config) {
+        return config.objective().equals("maximum_volume");
     }
 
-    private static SortKey nodeKey(ContainerState state, long unplacedCount, FutureBound future) {
+    private static SortKey nodeKey(Node node, FutureBound future, boolean byVolume) {
+        return nodeKey(node.state(), node.unplaced().size(), future, byVolume);
+    }
+
+    /** Under maximum_volume the reachable and used volume lead, ahead of the unplaced count. */
+    private static SortKey nodeKey(ContainerState state, long unplacedCount, FutureBound future, boolean byVolume) {
+        if (byVolume) {
+            return SortKey.of(future.reachableVolume(state).negate(), state.usedVolume.negate(), unplacedCount,
+                    state.maxZ, state.placementSignature());
+        }
         return SortKey.of(future.unpackedLowerBound(state, unplacedCount), unplacedCount,
                 (long) -state.placements.size(), state.maxZ, state.usedVolume.negate(), state.placementSignature());
     }
@@ -251,7 +268,9 @@ public final class BeamPacker {
             if (future.stream().noneMatch(item -> item.item().nestingHeight().isPresent())) {
                 List<BigInteger> sums = new ArrayList<>(future.size());
                 BigInteger used = BigInteger.ZERO;
-                for (BigInteger volume : future.stream().map(item -> item.dimensions().volume()).sorted().toList()) {
+                // Occupied, not declared: the free space these are compared with is occupied
+                // volume, and two wedges each declaring the whole crate both fit in it.
+                for (BigInteger volume : future.stream().map(Nesting::itemOccupiedVolume).sorted().toList()) {
                     used = used.add(volume);
                     sums.add(used);
                 }
@@ -273,6 +292,20 @@ public final class BeamPacker {
                 sorted[within++] = used;
             }
             return Arrays.copyOf(sorted, within);
+        }
+
+        /**
+         * An upper bound on the volume this node can still end with: what is placed, plus the
+         * future items' total volume capped by the free space. For nesting, nominal volumes are
+         * not additive, so the free space alone is the bound.
+         */
+        BigInteger reachableVolume(ContainerState state) {
+            if (count == 0) {
+                return state.usedVolume;
+            }
+            BigInteger free = state.container.innerDimensions().volume().subtract(state.usedVolume).max(BigInteger.ZERO);
+            BigInteger future = volumes.map(sums -> sums.get(sums.size() - 1)).orElse(free);
+            return state.usedVolume.add(future.min(free));
         }
 
         /** How many items the node must leave unpacked at the least. O(log f) for f future items. */

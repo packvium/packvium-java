@@ -26,7 +26,7 @@ public record PackingResult(
         alternatives = List.copyOf(alternatives);
     }
 
-    /** Derives feasibility and optimality from the status, as the reference engines do. */
+    /** Derives feasibility and optimality from the status, as every Packvium engine does. */
     public static PackingResult of(PackingStatus status, List<PackedContainer> containers, List<UnpackedItem> unpacked,
             AlgorithmReport algorithm, List<Long> score, List<String> warnings, ResultFact termination,
             String objective) {

@@ -5,7 +5,7 @@ import java.math.BigInteger;
 import java.util.List;
 
 /**
- * A precomputed ordering key with the reference engine's tuple semantics.
+ * A precomputed ordering key with the Python engine's tuple semantics.
  *
  * <p>Elements compare left to right; a key that is a prefix of another is smaller. Numbers
  * compare by exact value whatever their Java type, so a {@link BigInteger} volume and a long
@@ -49,7 +49,7 @@ public record SortKey(List<Object> elements) implements Comparable<SortKey> {
         throw new IllegalArgumentException("Cannot order " + left + " against " + right);
     }
 
-    /** Exact for finite values; an infinity (the reference's -INF sentinel) sorts past every finite one. */
+    /** Exact for finite values; an infinity (the item ordering's -INF sentinel) sorts past every finite one. */
     private static int compareNumbers(Number left, Number right) {
         int leftInfinity = infinitySign(left);
         int rightInfinity = infinitySign(right);

@@ -4,7 +4,7 @@ package com.packvium.holdout;
 public class HoldoutError extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
-    /** @param message the reason, worded as the reference engine words it */
+    /** @param message the reason, worded as the Python engine words it */
     public HoldoutError(String message) {
         super(message);
     }

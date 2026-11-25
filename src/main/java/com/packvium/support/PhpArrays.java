@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * The PHP array semantics the reference port's observable behaviour depends on.
+ * The PHP array semantics the PHP engine's observable behaviour depends on.
  *
  * <p>PHP decodes both JSON objects and JSON arrays into one array type, and turns a
  * canonical decimal-integer object key into an integer key. That is visible on the wire:

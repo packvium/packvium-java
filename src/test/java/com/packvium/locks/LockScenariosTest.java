@@ -19,14 +19,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 /**
- * The six operator-lock scenarios of the reference's conformance/execution/locks.py.
+ * The six shared operator-lock scenarios.
  *
- * <p>A lock has no wire representation, so these cannot be fixtures piped to every engine; the
- * reference drives them against Python alone, and this drives the same scenes against Java. What
+ * <p>A lock has no wire representation, so these cannot be requests piped to every engine; the
+ * Python engine runs them against itself alone, and this runs the same scenarios against Java. What
  * is certified is the behaviour 's acceptance names: a feasible lock is preserved exactly
  * and costs the load nothing; an unsafe lock is refused, never accommodated, with a deterministic
  * diagnostic; a self-contradictory lock set is refused before any solve; the approved plan is
- * unchanged; the same inputs give the same answer. Each unsafe scene is unsafe for a different
+ * unchanged; the same inputs give the same answer. Each unsafe scenario is unsafe for a different
  * reason -- support, top load, route order -- and none of those reasons is known to the lock
  * layer: they are the engine's rules on the ordinary path.
  *

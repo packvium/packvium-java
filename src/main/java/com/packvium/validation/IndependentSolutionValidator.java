@@ -16,6 +16,7 @@ import com.packvium.domain.AxlePair;
 import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
 import com.packvium.domain.FixedPlacement;
+import com.packvium.domain.FlatBag;
 import com.packvium.domain.Item;
 import com.packvium.domain.ItemInstance;
 import com.packvium.domain.Nesting;
@@ -25,6 +26,7 @@ import com.packvium.domain.PackingRequest;
 import com.packvium.domain.Placement;
 import com.packvium.domain.Point;
 import com.packvium.domain.Rotation;
+import com.packvium.domain.Sides;
 import com.packvium.domain.UnpackedItem;
 import com.packvium.policy.PhpValues;
 import com.packvium.sequence.RouteSequenceError;
@@ -121,6 +123,7 @@ public final class IndependentSolutionValidator {
         for (String detail : splitGroups(containers)) {
             issues.add(new ValidationIssue("group_split", detail));
         }
+        issues.addAll(madeToMeasureIssues(request, containers));
         issues.addAll(fixedPlacementIssues(request, containers));
         if (unpacked.isPresent()) {
             for (String detail : partialGroups(request, containers)) {
@@ -131,10 +134,44 @@ public final class IndependentSolutionValidator {
     }
 
     /**
+     * Every made-to-measure box is the one its placements call for. Containment in the box
+     * was checked above like any container's; this re-cuts it from the declared machine and the
+     * achieved extent, so a trial committed with a stale or mixed-up box is caught. O(p) per
+     * container.
+     */
+    private static List<ValidationIssue> madeToMeasureIssues(PackingRequest request,
+            List<PackedContainer> containers) {
+        Map<String, Container> declared = new LinkedHashMap<>();
+        request.containers().forEach(container -> declared.putIfAbsent(container.id(), container));
+        List<ValidationIssue> issues = new ArrayList<>();
+        for (PackedContainer packed : containers) {
+            Container machine = declared.get(packed.container().id());
+            if (machine == null || machine.madeToMeasure().isEmpty() || packed.container().madeToMeasure().isEmpty()) {
+                continue;
+            }
+            Container expected = machine.fabricate(FlatBag.extentOf(packed.placements()));
+            Container box = packed.container();
+            if (!box.innerDimensions().equals(expected.innerDimensions())) {
+                issues.add(new ValidationIssue("fabricated_dimensions_mismatch", packed.id()));
+            }
+            if (!box.outerDimensions().equals(expected.outerDimensions())) {
+                issues.add(new ValidationIssue("outer_dimensions_mismatch", packed.id()));
+            }
+            if (box.costMinor() != expected.costMinor()) {
+                issues.add(new ValidationIssue("made_to_measure_cost_mismatch", packed.id()));
+            }
+            if (box.tareWeight().ticks() != expected.tareWeight().ticks()) {
+                issues.add(new ValidationIssue("made_to_measure_tare_mismatch", packed.id()));
+            }
+        }
+        return issues;
+    }
+
+    /**
      * Every fixed placement is where the request put it, and nothing else claims to be.
      *
      * <p>Physics needs no rule: a fixed item is an ordinary placement, so every check above already
-     * applied to it. Only whether it moved is new (docs/PLAN-REVISIONS.md). O(f log f + n) for f
+     * applied to it. Only whether it moved is new. O(f log f + n) for f
      * fixed entries and n placements.
      */
     private static List<ValidationIssue> fixedPlacementIssues(PackingRequest request,
@@ -197,7 +234,8 @@ public final class IndependentSolutionValidator {
                     || (item.groundContactRule().isPresent() && !item.groundContactRule().get().equals("free"))) {
                 supportSensitive = true;
             }
-            if (!item.stackable()) {
+            // A stacking-group list refuses load on the same edges stackable does.
+            if (!item.stackable() || !item.acceptsStackingGroups().isEmpty()) {
                 stackSensitive = true;
             }
         }
@@ -244,6 +282,13 @@ public final class IndependentSolutionValidator {
             }
         }
         checkLoads(packed, issues);
+        if (container.isFlatBag()) {
+            // The girth rule over the envelopes alone; the frame is checked above.
+            Sides extent = FlatBag.extentOf(placements);
+            if (!FlatBag.girthAdmits(container.innerDimensions(), extent.length(), extent.width(), extent.height())) {
+                issues.add(new ValidationIssue("bag_girth_exceeded", packed.id()));
+            }
+        }
         boolean onRoute = placements.stream().anyMatch(p -> p.instance().item().stopIndex().isPresent());
         if (onRoute) {
             unloadingOrderViolation(packed).ifPresent(issues::add);

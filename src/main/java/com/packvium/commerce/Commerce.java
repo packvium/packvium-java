@@ -6,8 +6,8 @@ import java.util.Map;
  * The public function spelling of Packvium's exported commercial and control-plane API:
  * PHP's namespaced {@code Packvium\Commerce\quote()} and siblings, as static methods.
  *
- * <p>Each method is the same code as the matching {@link Api} method; see that class and
- * docs/COMMERCE-API.md for the contract. Every method throws {@link CommerceInputException}
+ * <p>Each method is the same code as the matching {@link Api} method; see that class for the
+ * contract. Every method throws {@link CommerceInputException}
  * when the document or request is malformed.
  */
 public final class Commerce {

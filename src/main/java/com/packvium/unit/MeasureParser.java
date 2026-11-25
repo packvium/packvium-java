@@ -54,7 +54,7 @@ final class MeasureParser {
 
     /**
      * A negative amount is refused as negative before its tick count is computed, so one past the
-     * 64-bit range is still named for its sign, as the reference's unbounded integers name it.
+     * 64-bit range is still named for its sign, as the Python engine's unbounded integers name it.
      */
     private long signed(Rational amount, long unitMultiplier, Rounding rounding) {
         if (amount.numerator() < 0) {

@@ -38,7 +38,7 @@ import java.util.Optional;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Extensions.java
+ *     java -cp target/packvium-1.6.0.jar examples/Extensions.java
  * </pre>
  *
  * <p>Most packing rules are already fields on {@code Item} and {@code Container} -- see
@@ -61,9 +61,12 @@ import java.util.Optional;
  *       type a multi-container search opens next.
  * </ul>
  *
- * <p>The interfaces take a few types that live in {@code com.packvium.algorithm}
- * ({@code RawSolution}, {@code SingleContainerSolution}). Implementing an interface means naming
- * them; read only what is shown here from them, since that package is not frozen like the rest.
+ * <p>{@code SolutionScorer} and {@code ContainerSelector} are handed the solver's own results,
+ * {@code RawSolution} and {@code SingleContainerSolution}, which live in the internal
+ * {@code com.packvium.algorithm} package. Implementing either interface means naming them, and
+ * their names are held by the interfaces' frozen signatures; read only what is shown here from
+ * them -- a {@code RawSolution}'s {@code containers} and {@code unpacked} -- since the rest is not
+ * frozen.
  */
 public final class Extensions {
     /**

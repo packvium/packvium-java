@@ -118,7 +118,7 @@ class RequestErrorsTest {
                         "is not a known field"),
                 Arguments.of(configuration("objective", "cheapest"), "not_allowed", "/configuration/objective",
                         "must be one of [\"default\",\"lowest_cost\",\"shipping_cost\",\"lowest_landed_cost\","
-                                + "\"open_dimension_height\",\"maximum_value\"]"),
+                                + "\"open_dimension_height\",\"maximum_value\",\"maximum_volume\"]"),
                 Arguments.of(container("access_directions", List.of("upwards")), "not_allowed",
                         "/containers/0/access_directions/0", "must be one of [\"+x\",\"-x\",\"+y\",\"-y\",\"+z\",\"-z\"]"),
                 Arguments.of(container("access_directions", "+x"), "wrong_type", "/containers/0/access_directions",

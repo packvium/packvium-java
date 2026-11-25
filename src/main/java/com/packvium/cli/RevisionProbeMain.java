@@ -16,15 +16,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The batch probe conformance/revisions/run.py and conformance/request_errors/run.py drive,
- * answering the protocol of the tag's {@code revisions/probe.php}: stdin is a JSON list of cases,
- * stdout one JSON line per case, in order, {@code {"error": code-or-null, "message": text-or-null,
- * "json": text-or-null}}.
+ * A test harness for cross-engine conformance; not a supported interface.
  *
- * <p>{@code admit} packs a request through the engine's ordinary JSON entry point and reports a
- * request refusal, if any, with its {@code reason} and {@code field} as well (docs/ERRORS.md). A
- * refusal is an outcome, not a failure, so the probe exits 0 unless it cannot run at all; any
- * other failure of an op other than {@code admit} stops the probe, as it does PHP's.
+ * <p>It answers plan-revision and request-admission cases in batch: stdin is a JSON list of
+ * cases, stdout one JSON line per case, in order, {@code {"error": code-or-null, "message":
+ * text-or-null, "json": text-or-null}}. {@code admit} packs a request through the engine's
+ * ordinary JSON entry point and reports a request refusal, if any, with its {@code reason} and
+ * {@code field} as well. A refusal is an outcome, not a failure, so the harness exits 0 unless it
+ * cannot run at all; any other failure of an op other than {@code admit} stops it.
  */
 public final class RevisionProbeMain {
     private RevisionProbeMain() {

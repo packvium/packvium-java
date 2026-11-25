@@ -16,7 +16,7 @@ final class Immutables {
         return Collections.unmodifiableMap(new LinkedHashMap<>(source));
     }
 
-    /** First occurrence wins, matching the reference engines' de-duplication of tag lists. */
+    /** First occurrence wins, matching PHP's de-duplication of tag lists. */
     static List<String> distinct(List<String> values) {
         return List.copyOf(new ArrayList<>(new LinkedHashSet<>(values)));
     }

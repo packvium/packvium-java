@@ -10,7 +10,7 @@ import java.util.Optional;
  * EXISTS/ABSENT, just whether field is present).
  *
  * <p>Values are the JSON values {@link com.packvium.serialization.JsonReader} yields. A
- * number that is not an exact 64-bit integer is a float to the reference port, and a float
+ * number that is not an exact 64-bit integer is a float to the PHP engine, and a float
  * never equals anything there, so it never equals anything here either.
  */
 public record Predicate(PolicyScope scope, String field, PolicyOperator operator, Optional<Object> value) {
@@ -51,7 +51,7 @@ public record Predicate(PolicyScope scope, String field, PolicyOperator operator
     }
 
     /**
-     * Value equality over the JSON scalar types, matching the reference implementation's
+     * Value equality over the JSON scalar types, matching the PHP engine's
      * semantics exactly -- including that a boolean equals the integer it stands for,
      * which is the one place a naive equality would disagree and quietly change a decision.
      */

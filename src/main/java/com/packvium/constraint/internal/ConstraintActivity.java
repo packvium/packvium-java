@@ -53,7 +53,8 @@ public final class ConstraintActivity {
         if (constraint instanceof StopAccessibilityConstraint stop) {
             // The constraint carries its own default doors, where the reference reads them from
             // the configuration: here they are the constructor argument it was built with.
-            return !routeSensitive
+            // A flat bag has no walls, so it inherits no doors either.
+            return !routeSensitive || container.isFlatBag()
                     || (container.accessDirections().isEmpty() && stop.defaultDirections().isEmpty());
         }
         if (constraint instanceof AxleLoadConstraint) {

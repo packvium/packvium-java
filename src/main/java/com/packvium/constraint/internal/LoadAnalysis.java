@@ -16,14 +16,14 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Per-scene load analysis over an already constructed support graph.
+ * Per-layout load analysis over an already constructed support graph.
  *
  * <p>LoadCalculator remains the allocation-owning facade. Search code that already owns an
  * incremental LoadSupportGraph uses this session instead, so the graph and its derived
  * load/ancestor vectors are each computed at most once. Building the load vector is
  * O(n + E) over the graph's descending order, which costs O(n log n) for a fresh graph and
  * O(n) for one extended by a unit; the ancestor sets are O(n^2) worst case, as the
- * reference engine's are. Query methods are O(n) and never rebuild contact geometry.
+ * PHP's are. Query methods are O(n) and never rebuild contact geometry.
  */
 public final class LoadAnalysis {
     private final List<LoadUnit> units;

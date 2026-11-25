@@ -1,4 +1,5 @@
 import com.packvium.Packer;
+import com.packvium.artifacts.OperationalArtifact;
 import com.packvium.config.EffortBudget;
 import com.packvium.config.PackingConfig;
 import com.packvium.config.SolverProfile;
@@ -7,6 +8,7 @@ import com.packvium.domain.Dimensions;
 import com.packvium.domain.Item;
 import com.packvium.extension.ExtensionRegistry;
 import com.packvium.result.PackingResult;
+import com.packvium.serialization.ResultEncoder;
 import com.packvium.unit.Weight;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +23,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Reproducibility.java
+ *     java -cp target/packvium-1.6.0.jar examples/Reproducibility.java
  * </pre>
  *
  * <p>The search tries several starts and keeps the best. Something has to decide when it stops,
@@ -156,19 +158,14 @@ public final class Reproducibility {
         return new Packer(config, ExtensionRegistry.none(), Optional.empty(), host(step)).pack(ITEMS, BOXES);
     }
 
-    /**
-     * Whether an artifact of this result could promise an exact replay: only when no clock stopped
-     * the search. It is the rule {@code OperationalArtifact.replayLevel} applies.
-     */
-    private static String replayLevel(PackingResult result) {
-        return result.algorithm().timeLimitReached() ? "not_guaranteed" : "exact";
-    }
-
     private static String describe(PackingResult result) {
         String opened = result.containers().stream().map(packed -> packed.container().id())
                 .collect(Collectors.joining(","));
+        // The replay promise an operational artifact of this result would make: exact only when no
+        // clock stopped the search.
+        String replay = OperationalArtifact.replayLevel(new ResultEncoder("mm", "g").encode(result));
         return "%-6s left out %2d  termination %-12s replay %s".formatted(opened, result.unpacked().size(),
-                result.termination().code(), replayLevel(result));
+                result.termination().code(), replay);
     }
 
     private static void section(String title) {

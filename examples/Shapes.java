@@ -9,7 +9,7 @@ import java.util.Map;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Shapes.java
+ *     java -cp target/packvium-1.6.0.jar examples/Shapes.java
  * </pre>
  *
  * <p>Every other example treats an item as the box it declares. That is the default and it is
@@ -22,9 +22,8 @@ import java.util.Map;
  * quietly packed a hull as its bounding box would return a plan that validates and does not
  * physically fit, so the value must be asked for.
  *
- * <p>Both are written here through {@code RequestPacker.pack}, the request contract the four
- * engines share, so the same document runs unchanged against the Python, Rust and JavaScript
- * engines.
+ * <p>Both are written here through {@code RequestPacker.pack}, the request contract every
+ * Packvium engine shares, so the same document runs unchanged against every Packvium engine.
  */
 public final class Shapes {
     // ------------------------------------------------------------------ convex_hull

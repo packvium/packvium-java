@@ -61,13 +61,19 @@ public final class ExactSmallSolver implements SingleContainerSolver {
 
     private static long landedCharge(ContainerState state, PackingConfig config) {
         return LandedCostSolutionScorer.chargeOrUnpriceable(state.container,
-                ShippingCostSolutionScorer.billedTicks(state.container, state.payloadTicks, config));
+                ShippingCostSolutionScorer.billedTicks(state.container, state.billedDimensions(), state.payloadTicks,
+                        config));
     }
 
     private static boolean isBetterForObjective(ContainerState candidate, BigInteger candidateVolume,
             ContainerState incumbent, BigInteger incumbentVolume, PackingConfig config) {
         int candidateCount = candidate.placements.size();
         int incumbentCount = incumbent.placements.size();
+        if (ranksByVolume(config)) {
+            // maximum_volume fills volume before it counts pieces.
+            int byVolume = candidateVolume.compareTo(incumbentVolume);
+            return byVolume != 0 ? byVolume > 0 : candidateCount > incumbentCount;
+        }
         if (candidateCount != incumbentCount) {
             return candidateCount > incumbentCount;
         }
@@ -79,6 +85,10 @@ public final class ExactSmallSolver implements SingleContainerSolver {
             }
         }
         return candidateVolume.compareTo(incumbentVolume) > 0;
+    }
+
+    private static boolean ranksByVolume(PackingConfig config) {
+        return config.objective().equals("maximum_volume");
     }
 
     @Override
@@ -150,10 +160,16 @@ public final class ExactSmallSolver implements SingleContainerSolver {
             }
             int potentialCount = stateCount + reachable;
             int bestCount = best.placements.size();
-            if (potentialCount < bestCount) {
+            if (ranksByVolume(config)) {
+                // Fewer pieces can still be more volume, so only the volume bound cuts; an equal
+                // bound wins only on a strictly larger count.
+                int bound = stateVolume.add(suffixVolumes[index]).compareTo(bestVolume);
+                if (bound < 0 || bound == 0 && potentialCount <= bestCount) {
+                    return;
+                }
+            } else if (potentialCount < bestCount) {
                 return;
-            }
-            if (!config.objective().equals(LandedCostSolutionScorer.OBJECTIVE_NAME) && potentialCount == bestCount
+            } else if (!config.objective().equals(LandedCostSolutionScorer.OBJECTIVE_NAME) && potentialCount == bestCount
                     && stateVolume.add(suffixVolumes[index]).compareTo(bestVolume) <= 0) {
                 return;
             }

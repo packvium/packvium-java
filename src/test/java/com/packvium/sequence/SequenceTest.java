@@ -19,7 +19,7 @@ class SequenceTest {
         return new AxisAlignedBox(new Point(x, y, z), Dimensions.ofTicks(l, w, h));
     }
 
-    private static final List<AxisAlignedBox> SCENE = List.of(box(0, 0, 0, 10, 10, 10), box(10, 0, 0, 10, 10, 10),
+    private static final List<AxisAlignedBox> LAYOUT = List.of(box(0, 0, 0, 10, 10, 10), box(10, 0, 0, 10, 10, 10),
             box(5, 0, 10, 10, 10, 10), box(0, 0, 20, 7, 10, 5), box(20, 0, 0, 3, 3, 3));
     private static final Dimensions CONTAINER = Dimensions.ofTicks(30, 10, 30);
 
@@ -29,25 +29,25 @@ class SequenceTest {
 
     @Test
     void ordersMatchTheReference() {
-        assertEquals(List.of(3, 2, 0, 1, 4), UnloadingDependencyGraph.safeRemovalOrder(SCENE, CONTAINER));
-        assertEquals(List.of(4, 1, 0, 2, 3), LoadingDependencyGraph.safeLoadingOrder(SCENE, CONTAINER));
-        assertEquals(List.of(3, 2, 0, 1, 4), UnloadingDependencyGraph.safeRemovalOrder(SCENE, CONTAINER, List.of("-x")));
-        assertEquals(List.of(4, 3, 2, 0, 1), UnloadingDependencyGraph.safeRouteRemovalOrder(SCENE,
+        assertEquals(List.of(3, 2, 0, 1, 4), UnloadingDependencyGraph.safeRemovalOrder(LAYOUT, CONTAINER));
+        assertEquals(List.of(4, 1, 0, 2, 3), LoadingDependencyGraph.safeLoadingOrder(LAYOUT, CONTAINER));
+        assertEquals(List.of(3, 2, 0, 1, 4), UnloadingDependencyGraph.safeRemovalOrder(LAYOUT, CONTAINER, List.of("-x")));
+        assertEquals(List.of(4, 3, 2, 0, 1), UnloadingDependencyGraph.safeRouteRemovalOrder(LAYOUT,
                 stops(3L, 4L, 2L, 1L, 0L), CONTAINER, List.of("+z", "+x")));
     }
 
     @Test
     void aStuckStopNamesEveryPlacementLeft() {
         RouteSequenceError error = assertThrows(RouteSequenceError.class, () -> UnloadingDependencyGraph
-                .safeRouteRemovalOrder(SCENE, stops(2L, 1L, 1L, null, 0L), CONTAINER, List.of("+z")));
+                .safeRouteRemovalOrder(LAYOUT, stops(2L, 1L, 1L, null, 0L), CONTAINER, List.of("+z")));
         assertEquals("stop 1: placements 1,2 cannot be unloaded there", error.getMessage());
         assertThrows(InvalidDirectionError.class,
-                () -> UnloadingDependencyGraph.safeRemovalOrder(SCENE, CONTAINER, List.of("up")));
+                () -> UnloadingDependencyGraph.safeRemovalOrder(LAYOUT, CONTAINER, List.of("up")));
     }
 
     @Test
     void reachabilityCarriesSortedEvidence() {
-        List<Reachability> reach = UnloadingDependencyGraph.placementReachability(SCENE, CONTAINER,
+        List<Reachability> reach = UnloadingDependencyGraph.placementReachability(LAYOUT, CONTAINER,
                 stops(1L, 2L, 1L, null, 3L), List.of("+x", "+z"));
         assertEquals(Map.of("index", 0L, "reachable", false, "blocked_by_support", List.of(2L),
                 "blocked_by_neighbors", List.of(1L, 2L, 3L, 4L), "blocked_by_route", List.of()), reach.get(0).toMap());
@@ -60,6 +60,6 @@ class SequenceTest {
     @Test
     void aSyntheticCycleIsDetected() {
         assertFalse(new LoadingDependencyGraph(Map.of(0, Set.of(1), 1, Set.of(0))).isAcyclic());
-        assertEquals(true, UnloadingDependencyGraph.build(SCENE).isAcyclic());
+        assertEquals(true, UnloadingDependencyGraph.build(LAYOUT).isAcyclic());
     }
 }

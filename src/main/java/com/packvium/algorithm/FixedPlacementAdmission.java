@@ -31,7 +31,7 @@ import java.util.Set;
 import java.util.stream.LongStream;
 
 /**
- * Admission of a request's fixed placements (docs/PLAN-REVISIONS.md).
+ * Admission of a request's fixed placements.
  *
  * <p>A fixed placement is an item already in a known place: loaded, or locked there by an
  * operator. It enters the solve as a real {@link Placement} -- weight, support, top load and all
@@ -40,7 +40,7 @@ import java.util.stream.LongStream;
  *
  * <p>What this class adds is the refusal. A fixed set that is not a valid packing on its own is
  * refused before any search, with {@code invalid_fixed_placement}, rather than exempted: an exempt
- * item would need a second validator, and four engines would have to agree on which rules it
+ * item would need a second validator, and every engine would have to agree on which rules it
  * skips. The check is the ordinary {@link IndependentSolutionValidator} run over the fixed set
  * alone, with item accounting left out because the free items have not been placed yet.
  */

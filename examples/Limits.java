@@ -13,7 +13,7 @@ import java.util.function.Consumer;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.5.0.jar examples/Limits.java
+ *     java -cp target/packvium-1.6.0.jar examples/Limits.java
  * </pre>
  *
  * <p>A same-day courier has one refrigerated van and a few cargo bikes. Every rule below is a
@@ -145,7 +145,7 @@ public final class Limits {
                 key.get(1), key.get(2)));
     }
 
-    /** Field by field, as the reference sorts the fields joined by a NUL. */
+    /** Field by field, the order a sort of the fields joined by a NUL gives. */
     private static int compareKeys(List<String> left, List<String> right) {
         for (int index = 0; index < left.size(); index++) {
             int order = SortKey.compareCodePoints(left.get(index), right.get(index));

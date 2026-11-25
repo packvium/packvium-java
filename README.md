@@ -12,11 +12,13 @@ eligibility policy, execution plans an operator can follow, a portable work-orde
 with CSV and printable exports, operator locks, and tools to
 prove that a change to your carton set is an improvement before you publish it.
 
-This is the Java port of Packvium. It reads the same JSON requests as the Python and PHP
-reference engines, and its tests hold it to their answers byte for byte on the shared
-conformance corpus.
+This is the Java port of Packvium. It reads the same JSON requests as every Packvium engine.
+Python, PHP, Java, .NET and Go return identical results at the same version; Rust and
+JavaScript return a valid answer at or above the objective floor. The reference engine is the
+Python package `packvium`; "the Python engine" in this README and in the API documentation means
+that package.
 
-> **Version 1.5.0.** This release corresponds to Packvium 1.5.0 in the other languages.
+> **Version 1.6.0.** This release corresponds to Packvium 1.6.0 in the other languages.
 > Field names, status codes and the objective vector stay the same for all of 1.x, so a
 > later 1.x release can replace any earlier one without code changes.
 
@@ -27,6 +29,7 @@ conformance corpus.
 - [Packing with domain objects](#packing-with-domain-objects)
 - [The JSON request API](#the-json-request-api)
 - [Constraints and objectives](#constraints-and-objectives)
+- [Boxes cut to measure, flat bags and stacking groups](#boxes-cut-to-measure-flat-bags-and-stacking-groups)
 - [Nested packing](#nested-packing)
 - [Weight rebalancing](#weight-rebalancing)
 - [Commerce: quotes, policy and catalogs](#commerce-quotes-policy-and-catalogs)
@@ -51,20 +54,20 @@ Maven:
 <dependency>
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.5.0</version>
+    <version>1.6.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.packvium:packvium:1.5.0")
+implementation("com.packvium:packvium:1.6.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.packvium:packvium:1.5.0'
+implementation 'com.packvium:packvium:1.6.0'
 ```
 
 The jar has no dependencies of its own.
@@ -259,9 +262,9 @@ doors a container is unloaded through (`accessDirections`), convex-hull shapes a
 compressible items. [`examples/Constraints.java`](examples/Constraints.java) and
 [`examples/Shapes.java`](examples/Shapes.java) show them at work.
 
-The objective decides which of several valid packings wins. There are six:
-`default`, `lowest_cost`, `shipping_cost`, `lowest_landed_cost`, `open_dimension_height`
-and `maximum_value`. Choose one, and a solver profile (`FAST`, `BALANCED`, `QUALITY`,
+The objective decides which of several valid packings wins. There are seven:
+`default`, `lowest_cost`, `shipping_cost`, `lowest_landed_cost`, `open_dimension_height`,
+`maximum_value` and `maximum_volume`. Choose one, and a solver profile (`FAST`, `BALANCED`, `QUALITY`,
 `EXACT_SMALL`), on the configuration:
 
 ```java
@@ -275,8 +278,61 @@ PackingConfig config = PackingConfig.builder(SolverProfile.BALANCED)
 ```
 
 No objective will leave an item behind to save money: the unplaced count always comes
-first. [`examples/Objectives.java`](examples/Objectives.java) builds a scene for each one
+first, except under `maximum_volume`, which ranks the share of the requested volume left
+behind ahead of the number of pieces, the way container-loading benchmarks are scored. A
+complete answer still beats every incomplete one. [`examples/Objectives.java`](examples/Objectives.java) builds a load for each one
 where it chooses differently.
+
+## Boxes cut to measure, flat bags and stacking groups
+
+A container can be cut to measure by an on-demand box machine. Its inner
+dimensions are the largest box the machine cuts; `MadeToMeasure` adds the smallest size and
+the cut step per axis, in ticks, and the board's price and weight per square metre. The
+packed container is the box that ships: its `innerDimensions` and `outerDimensions` are the
+achieved extent rounded up onto the machine grid, and its `costMinor` and `tareWeight` are the
+box's own. The JSON result reports `achieved_dimensions` and
+`made_to_measure.{cost_minor, tare_weight}`. Axles, obstacles, a void-fill reserve and fixed
+placements in such a container are refused.
+
+A flat bag is a poly mailer: its inner dimensions are the flat length, flat width
+and largest filled thickness, and a packing is admitted only when length plus thickness and
+width plus thickness of the load fit the bag. Dimensional weight is billed on the load's
+`achieved_dimensions`. A stacking group says which classes of item may rest
+directly on another; an item with no group rests on no constrained item, and `stackable(false)`
+still wins.
+
+```java
+import com.packvium.domain.Container;
+import com.packvium.domain.Dimensions;
+import com.packvium.domain.Item;
+import com.packvium.domain.MadeToMeasure;
+import com.packvium.domain.Sides;
+import com.packvium.unit.Length;
+import java.util.List;
+
+long mm = Length.mm(1).ticks();
+Container carton = Container.builder("carton", Dimensions.mm("600", "400", "400"))
+        .costMinor(35)
+        .madeToMeasure(new MadeToMeasure(
+                new Sides(100 * mm, 100 * mm, 50 * mm),   // smallest box
+                new Sides(10 * mm, 10 * mm, 10 * mm),     // cut step per axis
+                120,                                      // board price per square metre, minor units
+                0,                                        // board weight per square metre, weight ticks
+                new Sides(3 * mm, 3 * mm, 3 * mm)))       // outer size over inner size
+        .build();
+Container mailer = Container.builder("mailer", Dimensions.mm("400", "300", "60"))
+        .deformableBoundary("flat_bag")
+        .build();
+Item pallet = Item.builder("pallet", Dimensions.mm("1200", "800", "150"))
+        .stackingGroup("pallet")
+        .acceptsStackingGroups(List.of("pallet", "carton"))   // never drums
+        .build();
+```
+
+A result whose placements rest on nothing above the floor -- possible with the default
+`minimumSupportRatio` of 0 -- ends its `warnings`, and each alternative's, with
+`unsupported_placements: N placement(s) rest on nothing above the container floor; set
+configuration.minimum_support_ratio above 0 to require support`. No answer changes.
 
 ## Nested packing
 
@@ -631,15 +687,14 @@ the validator rejects and a refused self-citation.
 ## Examples
 
 The [`examples/`](examples) directory has nineteen runnable files. Each can be read from top to
-bottom and run with the JDK source launcher, with no project set up around it. The test
-suite (`ExamplesTest`) runs all nineteen and compares what each prints with what the reference
-example of the same name prints: the PHP one, except for `Execution.java`,
-`Intelligence.java`, `Artifacts.java` and `Rebalancing.java`, whose reference is the Python one.
+bottom and run with the JDK source launcher, with no project set up around it. The test suite
+runs every example and checks its output against a recorded copy; the output uses the notation
+shared by every Packvium language.
 
 | File | What it shows |
 | --- | --- |
 | [`Basic.java`](examples/Basic.java) | The smallest useful call: items go in and placements come out. |
-| [`Objectives.java`](examples/Objectives.java) | All six objectives, on scenes where they choose differently. |
+| [`Objectives.java`](examples/Objectives.java) | Six of the seven objectives (all but `maximum_volume`), on loads where they choose differently. |
 | [`Constraints.java`](examples/Constraints.java) | Upright-only, floor-only, top-load limits and tags, and how to read why an item was refused. |
 | [`Limits.java`](examples/Limits.java) | Fleet and vehicle limits: obstacles, `max_items`, tag limits, eligible container tags and `max_containers`. |
 | [`Trucking.java`](examples/Trucking.java) | A van with axle ratings on a three-stop route: axle loads, unloading and loading order, and what the driver can reach. |
@@ -662,7 +717,7 @@ Build the jar once, then run any example against it:
 
 ```bash
 mvn -q package -DskipTests
-java -cp target/packvium-1.5.0.jar examples/Objectives.java
+java -cp target/packvium-1.6.0.jar examples/Objectives.java
 ```
 
 ## Command line
@@ -673,7 +728,7 @@ and writes the result JSON to standard output:
 ```bash
 echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
        "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
-  | java -jar target/packvium-1.5.0.jar
+  | java -jar target/packvium-1.6.0.jar
 ```
 
 When a request is refused, the program exits with status 1 and prints the reason on
@@ -705,32 +760,37 @@ are never floating-point numbers, so rounding cannot change where an item is pla
 
 ## Differences from the other engines
 
-Valid requests get identical results in every engine. The Java port differs in a few
-places, and none of them shows up in the conformance corpus:
+Python, PHP, Java, .NET and Go return identical results at the same version; Rust and
+JavaScript return a valid answer at or above the objective floor.
+The Java port differs from the others in a few places:
 
 - Lengths and weights are stored as 64-bit ticks, as in PHP. If a value would overflow,
   the request is refused, whereas Python would keep calculating with larger integers.
-- The parallel portfolio cannot be enabled from a request, so it is not included. Every
-  start runs one after another, which is how the reference engine runs them.
+- There is no parallel portfolio: starts always run one after another, and a request cannot
+  ask for parallelism in any engine.
 - Operator locks, scenario comparison, recommendations, the outcome ledger and holdout
-  replay follow the Python engine, the only other engine that has them. Where Python
-  returns `None`, these return an empty `Optional`.
+  replay follow the Python engine, as the .NET and Go ports do. Where Python returns `None`, these
+  return an empty `Optional`.
 
 `container.pallet_overhang_limit` is reserved in the request format but not implemented by
 any engine yet. A request that sets it is refused with `unsupported_feature`.
 
 ## Versioning
 
-The Java port follows the Packvium release history one version at a time: Java 1.5.0
-answers what every other Packvium 1.5.0 answers. A version is released only once the port
-passes that version's shared conformance corpus. Within 1.x, the request and result
-formats, status codes and objective vector stay compatible; what changed in each release
+The Java port follows the Packvium release history one version at a time, and Java 1.6.0
+corresponds to Packvium 1.6.0.
+Python, PHP, Java, .NET and Go return identical results at the same version; Rust and
+JavaScript return a valid answer at or above the objective floor.
+A version is released only once the port passes that version's shared conformance tests.
+Within 1.x, the request and result formats, status codes and objective vector stay compatible; what changed in each release
 is in the [changelog](CHANGELOG.md).
 
 ## The Packvium family
 
 There are packages for Python (`pip install packvium`), PHP
-(`composer require packvium/packvium`), Rust, Node.js and the browser. They all accept
+(`composer require packvium/packvium`), Rust, Node.js and the browser, and ports to .NET
+([github.com/packvium/packvium-dotnet](https://github.com/packvium/packvium-dotnet)) and Go
+([github.com/packvium/packvium-go](https://github.com/packvium/packvium-go)). They all accept
 the same requests. Documentation, the constraint reference and benchmarks are at
 [packvium.com](https://packvium.com).
 

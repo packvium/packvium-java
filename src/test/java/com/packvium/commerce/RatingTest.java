@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** Expected values are the v1.0.0 commerce golden documents produced by the reference engines. */
+/** Expected values are the v1.0.0 commerce results the Python and PHP engines return. */
 class RatingTest {
     @Test
     void ratesLargeShipmentsExactlyWithoutOverflow() {

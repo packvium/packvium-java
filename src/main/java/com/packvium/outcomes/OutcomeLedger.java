@@ -19,7 +19,7 @@ import java.util.Set;
  *
  * <p>The ledger never reads, re-runs or overrides a packing decision's validation: it only appends
  * structured facts <em>about</em> a decision some already validated system produced. This is an
- * in-memory reference implementation of the contract, like the commerce registries; a production
+ * in-memory implementation of the contract, like the commerce registries; a production
  * deployment backs it with durable, truly append-only storage. Not thread-safe.
  */
 public final class OutcomeLedger {

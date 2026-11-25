@@ -1,5 +1,8 @@
 package com.packvium.support;
 
+import com.packvium.domain.FlatBag;
+import com.packvium.domain.MadeToMeasure;
+import com.packvium.domain.Sides;
 import com.packvium.serialization.InvalidRequestException;
 import com.packvium.support.MeasureReading.Kind;
 import com.packvium.support.MeasureReading.Verdict;
@@ -15,15 +18,15 @@ import java.util.Set;
 /**
  * The request schema's rules, walked over the decoded JSON before any model is built.
  *
- * <p>Held to {@code packvium.request_errors.check_request}: the first violation wins, in the order
- * every engine follows -- units, configuration, items, containers -- and is refused with the same
- * reason, JSON Pointer and message the reference raises. O(size of the request), plus
+ * <p>The first violation wins, in the order every engine follows -- units, configuration, items,
+ * containers -- and is refused with the same reason, JSON Pointer and message the Python engine
+ * raises. O(size of the request), plus
  * O(t log t) to walk an object of t tag limits in code-point order.
  */
 public final class RequestRules {
     public static final List<String> SOLVER_PROFILES = List.of("fast", "balanced", "quality", "exact_small");
     public static final List<String> OBJECTIVES = List.of("default", "lowest_cost", "shipping_cost",
-            "lowest_landed_cost", "open_dimension_height", "maximum_value");
+            "lowest_landed_cost", "open_dimension_height", "maximum_value", "maximum_volume");
     public static final List<String> ACCESS_DIRECTIONS = List.of("+x", "-x", "+y", "-y", "+z", "-z");
 
     private static final List<Map.Entry<String, Long>> CONFIGURATION_INTEGERS = List.of(
@@ -44,6 +47,12 @@ public final class RequestRules {
     private static final List<String> SIDES = List.of("length", "width", "height");
     private static final List<String> AXES = List.of("x", "y", "z");
     private static final String WEIGHT_UNIT = "g";
+    /** Container fields a flat bag refuses, in reporting order. */
+    private static final List<String> BAG_EXCLUSIONS = List.of("obstacles", "axles", "access_directions",
+            "max_stack_density", "outer_dimensions", "void_fill_reserve_ratio", "made_to_measure");
+    /** Every key the request schema's {@code made_to_measure} declares; it sets {@code additionalProperties: false}. */
+    private static final Set<String> MADE_TO_MEASURE_FIELDS = Set.of("cost_per_square_metre_minor", "increment",
+            "minimum", "outer_allowance", "tare_per_square_metre");
 
     private RequestRules() {
     }
@@ -124,6 +133,26 @@ public final class RequestRules {
         optionalInteger(item, "max_compression_pressure_kpa", where, 0);
         optionalRatio(item, "minimum_support_ratio", where, 1L);
         optionalRatio(item, "compression_ratio", where, null);
+        Object stackingGroup = item.get("stacking_group");
+        if (stackingGroup != null) {
+            stackingGroupName(stackingGroup, where + "/stacking_group");
+        }
+        Object accepts = item.get("accepts_stacking_groups");
+        if (accepts != null) {
+            List<?> names = listAt(accepts, where + "/accepts_stacking_groups");
+            for (int index = 0; index < names.size(); index++) {
+                stackingGroupName(names.get(index), where + "/accepts_stacking_groups/" + index);
+            }
+        }
+    }
+
+    private static void stackingGroupName(Object value, String field) {
+        if (!(value instanceof String name)) {
+            throw refuse("wrong_type", field, "must be a string");
+        }
+        if (name.isEmpty()) {
+            throw refuse("invalid_value", field, "must not be empty");
+        }
     }
 
     private static void container(Object raw, String where, String unit) {
@@ -157,6 +186,104 @@ public final class RequestRules {
         if (obstacles != null) {
             obstacles(obstacles, where + "/obstacles", unit);
         }
+        Object boundary = container.get("deformable_boundary");
+        if (boundary != null) {
+            deformableBoundary(container, boundary, where);
+        }
+        Object machine = container.get("made_to_measure");
+        if (machine != null) {
+            madeToMeasure(container, machine, where, unit);
+        }
+    }
+
+    /**: the bag's own shape, then every container field a flat bag refuses, in order. */
+    private static void deformableBoundary(Map<?, ?> container, Object raw, String where) {
+        String field = where + "/deformable_boundary";
+        Map<?, ?> boundary = objectAt(raw, field);
+        oneOf(required(boundary, "kind", field), field + "/kind", FlatBag.KINDS);
+        knownFields(boundary, field, List.of("kind"));
+        for (String name : BAG_EXCLUSIONS) {
+            if (setBesideABag(name, container.get(name))) {
+                throw refuse("not_allowed", where + "/" + name, "cannot be combined with deformable_boundary");
+            }
+        }
+    }
+
+    /** An empty obstacle list and a zero reserve change nothing, so only they are let through. */
+    private static boolean setBesideABag(String name, Object value) {
+        if (name.equals("obstacles")) {
+            // Already a list here: the obstacle rules ran first.
+            return value instanceof List<?> list && !list.isEmpty();
+        }
+        if (name.equals("void_fill_reserve_ratio")) {
+            return value != null && compare(value, 0) > 0;
+        }
+        return value != null;
+    }
+
+    /**
+     * The made-to-measure block's shape top to bottom, then each axis's four rules, then
+     * the price ceiling. Run after every other container field, so an existing error always wins.
+     * O(1); the price is exact, so no product can wrap.
+     */
+    private static void madeToMeasure(Map<?, ?> container, Object raw, String where, String unit) {
+        String field = where + "/made_to_measure";
+        Map<?, ?> machine = objectAt(raw, field);
+        knownFields(machine, field, MADE_TO_MEASURE_FIELDS);
+        for (String name : List.of("minimum", "increment")) {
+            required(machine, name, field);
+        }
+        for (String name : List.of("minimum", "increment", "outer_allowance")) {
+            Object sides = machine.get(name);
+            if (sides != null) {
+                dimensions(sides, field + "/" + name, unit);
+            }
+        }
+        optionalInteger(machine, "cost_per_square_metre_minor", field, 0);
+        optionalMeasure(machine, "tare_per_square_metre", field, Kind.WEIGHT, WEIGHT_UNIT);
+        if (container.get("outer_dimensions") != null) {
+            throw refuse("not_allowed", where + "/outer_dimensions", "cannot be combined with made_to_measure");
+        }
+        long[] inner = sideTicks(container.get("inner_dimensions"), unit);
+        long[] minimum = sideTicks(machine.get("minimum"), unit);
+        long[] increment = sideTicks(machine.get("increment"), unit);
+        for (int axis = 0; axis < 3; axis++) {
+            String side = SIDES.get(axis);
+            if (minimum[axis] == 0) {
+                throw refuse("invalid_value", field + "/minimum/" + side, "must be positive");
+            }
+            if (increment[axis] == 0) {
+                throw refuse("invalid_value", field + "/increment/" + side, "must be positive");
+            }
+            if (minimum[axis] > inner[axis]) {
+                throw refuse("invalid_value", field + "/minimum/" + side, "exceeds inner_dimensions");
+            }
+            if ((inner[axis] - minimum[axis]) % increment[axis] != 0) {
+                throw refuse("invalid_value", field + "/increment/" + side,
+                        "does not divide inner_dimensions minus minimum");
+            }
+        }
+        long price = wholeOrZero(machine.get("cost_per_square_metre_minor"));
+        long fee = wholeOrZero(container.get("cost_minor"));
+        if (MadeToMeasure.boxCostFor(price, fee, new Sides(inner[0], inner[1], inner[2]))
+                .compareTo(MadeToMeasure.MAX_EXACT_INTEGER) > 0) {
+            throw refuse("invalid_value", field + "/cost_per_square_metre_minor",
+                    "prices the largest box above " + CanonicalJson.MAX_EXACT_MAGNITUDE);
+        }
+    }
+
+    /** An integer the rules above already admitted, or 0 for an absent or falsy one. */
+    private static long wholeOrZero(Object value) {
+        return value == null ? 0 : JsonValue.integer(value).orElse(0L);
+    }
+
+    private static long[] sideTicks(Object raw, String unit) {
+        Map<?, ?> sides = (Map<?, ?>) raw;
+        long[] ticks = new long[3];
+        for (int axis = 0; axis < 3; axis++) {
+            ticks[axis] = MeasureReading.ticks(sides.get(SIDES.get(axis)), Kind.LENGTH, unit);
+        }
+        return ticks;
     }
 
     private static void accessDirections(Object raw, String where) {

@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** Expected values follow the v1.0.0 catalog golden documents. */
+/** Expected values are the v1.0.0 catalog results every engine returns. */
 class CatalogTest {
     private static Snapshot items(String... ids) {
         List<ItemMaster> items = new java.util.ArrayList<>();

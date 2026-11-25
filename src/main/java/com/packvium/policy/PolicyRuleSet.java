@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * The rules that participate in one request, already resolved and ordered.
  *
- * <p>Resolution is fixed by the contract in docs/POLICY-RULES.md and must be identical in every
+ * <p>Resolution is fixed by the policy contract and must be identical in every
  * engine, or the same request packs differently depending on which one answered it.
  */
 public record PolicyRuleSet(List<PolicyRule> rules) {

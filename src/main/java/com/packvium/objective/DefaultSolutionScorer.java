@@ -6,7 +6,7 @@ import com.packvium.domain.PackedContainer;
 import java.math.BigInteger;
 
 /**
- * Canonical objective vector -- see docs/OBJECTIVE.md.
+ * The canonical objective vector.
  *
  * <p>Five lexicographic keys, ascending, lower is better: unpacked count, container count,
  * total cost, unused volume (ppm, floored per container) and stack height (ppm, floored per

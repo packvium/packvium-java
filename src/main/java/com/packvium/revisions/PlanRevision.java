@@ -22,7 +22,7 @@ import java.util.Set;
 /**
  * Plan revisions: an append-only chain of exceptions against approved plans.
  *
- * <p>{@code docs/PLAN-REVISIONS.md} is the contract, and {@code packvium.revisions} the reference.
+ * <p>Every Packvium engine derives the same revisions.
  * A revision records what differed from an approved plan -- a missing item, a substituted carton,
  * a lock, a verified placement -- and derives the request the next plan solves. It is a pure
  * function of its parent, the approved artifact and its events: it calls no solver, validator or
@@ -157,7 +157,7 @@ public final class PlanRevision {
         }
     }
 
-    /** The RFC 8785 canonical form, the bytes a digest and four engines are compared on. */
+    /** The RFC 8785 canonical form, the bytes a digest and every engine are compared on. */
     public static String canonicalJson(Object document) {
         try {
             return CanonicalJson.encode(document);

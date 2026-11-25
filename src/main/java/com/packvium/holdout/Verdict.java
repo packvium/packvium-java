@@ -17,7 +17,7 @@ public enum Verdict {
         this.value = value;
     }
 
-    /** The reference spelling, such as {@code traded_off}. */
+    /** The Python engine's spelling, such as {@code traded_off}. */
     public String value() {
         return value;
     }

@@ -7,10 +7,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * RFC 8785 canonical JSON: the one spelling four engines can agree on byte for byte.
+ * RFC 8785 canonical JSON: the one spelling every engine can agree on byte for byte.
  *
- * <p>Held byte-identical to {@code packvium._canonical_json} and PHP's
- * {@code Support\CanonicalJson}, over the value trees {@link com.packvium.serialization.JsonReader}
+ * <p>Byte-identical to the canonical JSON of every Packvium engine, over the value trees {@link com.packvium.serialization.JsonReader}
  * yields and the {@code Map}/{@code List} trees this port builds:
  *
  * <ul>
@@ -23,7 +22,7 @@ import java.util.Map;
  *   <li>No whitespace.
  * </ul>
  *
- * <p>A {@link BigDecimal} is a decoded non-integer JSON number, which every reference engine
+ * <p>A {@link BigDecimal} is a decoded non-integer JSON number, which every Packvium engine
  * holds as the nearest double, so it is written as that double: {@code 1.0} is {@code 1}.
  * An integer or a number whose magnitude exceeds 2^53 - 1, or that is not finite, is refused
  * ({@code number_out_of_range}); so is a string carrying a lone UTF-16 surrogate
@@ -50,7 +49,7 @@ public final class CanonicalJson {
     }
 
     /**
-     * How a refusal quotes a value: its canonical JSON, the one spelling four engines share, so no
+     * How a refusal quotes a value: its canonical JSON, the one spelling every engine shares, so no
      * engine's own representation leaks into a message another engine must match.
      */
     public static String spelling(Object value) {

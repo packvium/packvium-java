@@ -64,7 +64,7 @@ class CandidateSelectionTest {
                 List<List<Object>> calls = List.copyOf(recording.calls);
                 assertTrue(every.size() > 7);
                 assertTrue(new HashSet<>(every.stream().map(Candidate::score).toList()).size() < every.size(),
-                        "the scene must contain tied scores");
+                        "the layout must contain tied scores");
                 for (int width : new int[] {1, 2, 3, 7, 128}) {
                     recording.calls.clear();
                     SearchStats stats = new SearchStats();

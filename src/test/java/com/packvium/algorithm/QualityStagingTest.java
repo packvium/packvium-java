@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
  * The `quality` portfolio stages its starts as Python does: every start greedy, then one
  * late-type neighborhood of the best greedy extreme-point order per item type, then one beam
  * refinement of the best extreme-point order. Expected values are Python's own output at tag
- * v1.5.0 for this request.
+ * v1.6.0 for this request.
  */
 class QualityStagingTest {
     private static final String REQUEST = """

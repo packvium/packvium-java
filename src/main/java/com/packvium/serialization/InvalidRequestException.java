@@ -3,10 +3,10 @@ package com.packvium.serialization;
 /**
  * The request is not one any engine may answer. Nothing was solved.
  *
- * <p>Held to {@code packvium.request_errors.InvalidRequestError}. A caller branches on
+ * <p>The same refusal every Packvium engine raises. A caller branches on
  * {@link #errorCode()} ({@code invalid_request}; subclasses such as
  * {@link com.packvium.validation.FixedPlacementException} name their own), on {@link #reason()} --
- * one of a closed set shared by four engines: {@code missing_field}, {@code wrong_type},
+ * one of a closed set shared by every Packvium engine: {@code missing_field}, {@code wrong_type},
  * {@code below_minimum}, {@code above_maximum}, {@code negative_measure}, {@code invalid_unit},
  * {@code duplicate_id}, {@code not_allowed}, {@code invalid_value} -- and on {@link #field()}, the
  * RFC 6901 JSON Pointer of the offending value ({@code ""} for the request as a whole), so no

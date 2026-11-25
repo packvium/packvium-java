@@ -42,7 +42,7 @@ public record ConstraintContext(
         return new AxisAlignedBox(point, envelopeDimensions);
     }
 
-    /** The reference engine's {@code ===} on two placement lists: same elements, same order. */
+    /** PHP's {@code ===} on two placement lists: same elements, same order. */
     static boolean samePlacements(List<Placement> left, List<Placement> right) {
         if (left == right) {
             return true;

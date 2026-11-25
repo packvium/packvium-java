@@ -12,13 +12,12 @@ import java.util.Map;
 import java.util.function.BinaryOperator;
 
 /**
- * Drive the exported commerce surface from stdin to stdout -- the Java half of the contract
- * conformance/commerce/adapters/php_cli.php implements: one case object in, one canonical
- * result document out. It calls the public {@link Commerce} methods, so what the harness
- * compares is the exported API.
+ * The commerce surface from stdin to stdout: one object naming an operation, its document and
+ * its request in, and one canonical result document out. It calls the public
+ * {@link Commerce} methods, so it answers exactly what the library API answers.
  *
- * <p>Exit codes follow the PHP adapter: 1 with "input error: ..." for a malformed request,
- * 2 for an unknown operation, and 255 -- PHP's fatal-error status -- for anything else.
+ * <p>Exit codes: 1 with "input error: ..." for a malformed request, 2 for an unknown operation,
+ * and 255 -- the status PHP gives a fatal error -- for anything else.
  */
 public final class CommerceMain {
     private static final int INPUT_ERROR = 1;

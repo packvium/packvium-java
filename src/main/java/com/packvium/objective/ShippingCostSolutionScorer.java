@@ -5,6 +5,7 @@ import com.packvium.config.PackingConfig;
 import com.packvium.domain.Container;
 import com.packvium.domain.Dimensions;
 import com.packvium.domain.PackedContainer;
+import java.util.Optional;
 
 /**
  * Ranks by total carrier-billable weight ahead of container count, unused volume and stack
@@ -38,25 +39,28 @@ public class ShippingCostSolutionScorer implements SolutionScorer {
 
     /** The weight a carrier bills this container at, in weight ticks. */
     protected long billedTicks(PackedContainer packed) {
-        return billedTicks(packed.container(), packed.payloadWeight().ticks(), divisor, lengthUnit, weightUnit);
+        return billedTicks(Optional.of(packed.billedDimensions()), packed.grossWeight().ticks(), divisor, lengthUnit,
+                weightUnit);
     }
 
     /**
-     * max(gross weight, dimensional weight of the shipped box). The one definition every caller
-     * that prices a container uses, so the search, the score and the final guard cannot bill
-     * the same container differently.
+     * max(gross weight, dimensional weight of what the carrier measures): the declared outer box,
+     * or a flat bag's achieved package; an empty bag bills nothing by volume. The one
+     * definition every caller that prices a container uses, so the search, the score and the
+     * final guard cannot bill the same container differently.
      */
-    public static long billedTicks(Container container, long payloadTicks, long divisor, String lengthUnit,
+    public static long billedTicks(Optional<Dimensions> shipped, long grossTicks, long divisor, String lengthUnit,
             String weightUnit) {
-        Dimensions shipped = container.outerDimensions().orElse(container.innerDimensions());
-        long dimensional = shipped.dimensionalWeight(divisor, lengthUnit, weightUnit).ticks();
-        return Math.max(Math.addExact(container.tareWeight().ticks(), payloadTicks), dimensional);
+        long dimensional = shipped.map(box -> box.dimensionalWeight(divisor, lengthUnit, weightUnit).ticks()).orElse(0L);
+        return Math.max(grossTicks, dimensional);
     }
 
-    /** {@link #billedTicks(Container, long, long, String, String)} with the config's divisor and units. */
-    public static long billedTicks(Container container, long payloadTicks, PackingConfig config) {
-        return billedTicks(container, payloadTicks, requireDivisor(config, config.objective()),
-                config.dimensionalWeightLengthUnit(), config.dimensionalWeightWeightUnit());
+    /** A container as a search state holds it, with the config's divisor and units. */
+    public static long billedTicks(Container container, Optional<Dimensions> shipped, long payloadTicks,
+            PackingConfig config) {
+        return billedTicks(shipped, Math.addExact(container.tareWeight().ticks(), payloadTicks),
+                requireDivisor(config, config.objective()), config.dimensionalWeightLengthUnit(),
+                config.dimensionalWeightWeightUnit());
     }
 
     @Override
