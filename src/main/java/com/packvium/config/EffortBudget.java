@@ -1,5 +1,6 @@
 package com.packvium.config;
 
+import com.packvium.support.ObjectRefusal;
 import java.util.Optional;
 
 /**
@@ -27,7 +28,7 @@ public record EffortBudget(
 
     private static void requireAtLeastOne(String name, Optional<Long> limit) {
         if (limit.isPresent() && limit.get() < 1) {
-            throw new IllegalArgumentException("effort_budget." + name + " must be at least 1");
+            throw new ObjectRefusal("below_minimum", "effort_budget." + name + " must be at least 1");
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.packvium.unit;
 
+import com.packvium.support.ObjectRefusal;
 import com.packvium.support.RationalParser;
 import com.packvium.support.Text;
 import java.util.LinkedHashMap;
@@ -68,7 +69,7 @@ public record Length(long ticks) implements Comparable<Length> {
             case "m" -> TICKS_PER_MM * 1000;
             case "in", "inch", "inches" -> TICKS_PER_INCH;
             case "ft" -> TICKS_PER_INCH * 12;
-            default -> throw new IllegalArgumentException("unsupported length unit: " + unit);
+            default -> throw new ObjectRefusal("invalid_unit", "unsupported length unit: " + unit);
         };
     }
 

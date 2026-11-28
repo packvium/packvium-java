@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Rebalancing.java
+ *     java -cp target/packvium-1.7.0.jar examples/Rebalancing.java
  * </pre>
  *
  * <p>The packer opens as few containers as it can and fills the first one tightly. For two pallets

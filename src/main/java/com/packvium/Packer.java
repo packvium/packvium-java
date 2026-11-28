@@ -23,6 +23,7 @@ import com.packvium.result.PackingStatus;
 import com.packvium.result.ResultFact;
 import com.packvium.result.StartRecord;
 import com.packvium.result.TerminationSummary;
+import com.packvium.support.RequestObjects;
 import com.packvium.support.SortKey;
 import com.packvium.support.StableSorter;
 import com.packvium.validation.IndependentSolutionValidator;
@@ -66,8 +67,16 @@ public final class Packer {
      * take the first instances of their type, their containers open first and are kept, and they
      * come back {@code fixed}. A fixed set that cannot hold on its own is refused with
      * {@link com.packvium.validation.FixedPlacementException} before any search.
+     *
+     * <p>A value the request schema refuses is refused here as it is in a JSON request, with
+     * {@link com.packvium.serialization.InvalidRequestException} naming its reason and JSON
+     * Pointer, and a model that refuses a value while it is built throws
+     * {@link com.packvium.support.ObjectRefusal}, a request error with the reason and no field.
      */
     public PackingResult pack(List<Item> items, List<Container> containers, List<FixedPlacement> fixedPlacements) {
+        // The JSON path's rules, with the JSON path's reason and field: a request built from
+        // objects is refused exactly where the same request as JSON would be.
+        RequestObjects.check(items, containers, config, fixedPlacements);
         PackingRequest request = new PackingRequest(items, containers, fixedPlacements);
         LandedCostSolutionScorer.requirePriceableObjective(config, request.containers());
         FixedLoad fixed = FixedPlacementAdmission.admit(request, config.minimumSupportRatio(), config.clearance(),

@@ -24,7 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Runs every shipped example the way its Javadoc tells a reader to, and checks what it prints
  * twice: against the committed Java output, and against what the PHP or Python example of the
- * same name prints in Packvium 1.6.0.
+ * same name prints in Packvium 1.7.0.
  *
  * <p>The comparison is with PHP, the port's model, except where PHP has no such example:
  * {@code execution} continues into operator locks, {@code intelligence} and {@code rebalancing}
@@ -107,7 +107,7 @@ class ExamplesTest {
                             + " container.pallet_overhang_limit; the req",
                     "  sending one anyway: unsupported_feature: the PHP engine does not yet implement"
                             + " container.pallet_overhang_limit; the requ",
-                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.6.0.jar",
+                    "the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.7.0.jar",
                     "the CLI takes exactly the document above:  echo '...' | php bin/packvium"),
             "errors", Map.of(
                     // The reference names its own language's base exception.

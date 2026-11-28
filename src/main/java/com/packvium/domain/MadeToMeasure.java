@@ -1,5 +1,6 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,16 +29,16 @@ public record MadeToMeasure(Sides minimum, Sides increment, long costPerSquareMe
 
     public MadeToMeasure {
         if (Math.min(minimum.length(), Math.min(minimum.width(), minimum.height())) <= 0) {
-            throw new IllegalArgumentException("made_to_measure minimum must be positive");
+            throw new ObjectRefusal("invalid_value", "made_to_measure minimum must be positive");
         }
         if (Math.min(increment.length(), Math.min(increment.width(), increment.height())) <= 0) {
-            throw new IllegalArgumentException("made_to_measure increment must be positive");
+            throw new ObjectRefusal("invalid_value", "made_to_measure increment must be positive");
         }
         if (costPerSquareMetreMinor < 0 || tarePerSquareMetre < 0) {
-            throw new IllegalArgumentException("made_to_measure prices cannot be negative");
+            throw new ObjectRefusal("below_minimum", "made_to_measure prices cannot be negative");
         }
         if (Math.min(outerAllowance.length(), Math.min(outerAllowance.width(), outerAllowance.height())) < 0) {
-            throw new IllegalArgumentException("made_to_measure outer_allowance cannot be negative");
+            throw new ObjectRefusal("negative_measure", "made_to_measure outer_allowance cannot be negative");
         }
     }
 
@@ -49,11 +50,11 @@ public record MadeToMeasure(Sides minimum, Sides increment, long costPerSquareMe
     public void admits(Sides maximum) {
         for (int axis = 0; axis < 3; axis++) {
             if (minimum.get(axis) > maximum.get(axis)) {
-                throw new IllegalArgumentException(
+                throw new ObjectRefusal("invalid_value",
                         "made_to_measure minimum " + AXES.get(axis) + " exceeds inner_dimensions");
             }
             if ((maximum.get(axis) - minimum.get(axis)) % increment.get(axis) != 0) {
-                throw new IllegalArgumentException("made_to_measure increment " + AXES.get(axis)
+                throw new ObjectRefusal("invalid_value", "made_to_measure increment " + AXES.get(axis)
                         + " does not divide inner_dimensions minus minimum");
             }
         }

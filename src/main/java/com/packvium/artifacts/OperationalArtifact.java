@@ -40,7 +40,7 @@ public final class OperationalArtifact {
      * The engine's own name is deliberately not recorded: four correct builders naming
      * themselves would emit four different documents.
      */
-    public static final String SUITE_VERSION = "1.6.0";
+    public static final String SUITE_VERSION = "1.7.0";
 
     /** The deterministic part of {@code result.algorithm}; {@code duration_ms} is wall-clock time. */
     public static final List<String> SOLVER_FIELDS = List.of(

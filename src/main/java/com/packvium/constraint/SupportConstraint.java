@@ -48,12 +48,11 @@ public final class SupportConstraint implements PlacementConstraint {
         }
         AxisAlignedBox box = context.envelopeBox();
         DirectSupportView support = LoadSupportGraph.candidateView(context.placements(), context.item(), box);
-        List<AxisAlignedBox> surfaces = support.surfaces();
         List<AxisAlignedBox> supporters = support.supporterBoxes();
         Optional<String> rule = context.item().item().groundContactRule();
         if (rule.isPresent() && !rule.get().equals("free")) {
             int count = supporters.size();
-            if (rule.get().equals("covered") && !touchesCorners(box, surfaces)) {
+            if (rule.get().equals("covered") && !touchesCorners(box, supporters)) {
                 return ConstraintResult.reject("ground_contact_violation",
                         "covered: " + count + " supporter(s), not all four corners touched");
             }
@@ -88,19 +87,20 @@ public final class SupportConstraint implements PlacementConstraint {
     }
 
     /**
-     * Whether every one of the candidate's four base corners rests on some surface. A ratio
+     * Whether every one of the candidate's four base corners rests on some supporter. A ratio
      * cannot express this: 90% of the footprint concentrated in the middle passes any ratio
-     * below that but leaves every corner hanging. Public because the loading-prefix replay
+     * below that but leaves every corner hanging. Only positive-area supporters count: a
+     * neighbour touching a corner along an edge carries nothing. Public because the loading-prefix replay
      * reuses this exact calculation. O(4 * s).
      */
-    public static boolean touchesCorners(AxisAlignedBox box, List<AxisAlignedBox> surfaces) {
+    public static boolean touchesCorners(AxisAlignedBox box, List<AxisAlignedBox> supporters) {
         long[][] corners = {
             {box.origin().x(), box.origin().y()}, {box.x2(), box.origin().y()},
             {box.origin().x(), box.y2()}, {box.x2(), box.y2()},
         };
         for (long[] corner : corners) {
             boolean touched = false;
-            for (AxisAlignedBox surface : surfaces) {
+            for (AxisAlignedBox surface : supporters) {
                 if (surface.origin().x() <= corner[0] && corner[0] <= surface.x2()
                         && surface.origin().y() <= corner[1] && corner[1] <= surface.y2()) {
                     touched = true;

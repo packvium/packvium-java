@@ -38,7 +38,7 @@ class DomainTest {
     void refusesAShapeFieldOnTheWrongShape() {
         IllegalArgumentException refusal = assertThrows(IllegalArgumentException.class,
                 () -> Item.builder("a", CUBE).compressionRatioPpm(5L).build());
-        assertEquals("compression_ratio is not part of a rigid_cuboid item", refusal.getMessage());
+        assertEquals("compression_ratio_ppm is not part of a rigid_cuboid item", refusal.getMessage());
     }
 
     @Test

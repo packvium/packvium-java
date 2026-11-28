@@ -1,5 +1,6 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
 import com.packvium.unit.Length;
 import com.packvium.unit.Weight;
 import java.math.BigInteger;
@@ -92,7 +93,10 @@ public final class Compression {
      */
     public static long ratioToPpm(double ratio) {
         if (ratio < 0.0 || ratio > 1.0) {
-            throw new IllegalArgumentException("compression_ratio must be between zero and one");
+            // Below zero is the schema's floor; the schema sets no ceiling, so above one stays the
+            // catch-all invalid_value every engine answers.
+            throw new ObjectRefusal(ratio < 0 ? "below_minimum" : "invalid_value",
+                    "compression_ratio must be between zero and one");
         }
         return (long) (ratio * PPM + 0.5);
     }

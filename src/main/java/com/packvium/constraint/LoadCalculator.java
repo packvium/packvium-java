@@ -96,19 +96,10 @@ public final class LoadCalculator {
      * removed, always a blocker.
      */
     public static Optional<Violation> routeOrderViolated(List<LoadUnit> units, List<Double> stops) {
-        if (stops.stream().allMatch(stop -> stop == Double.POSITIVE_INFINITY)) {
+        if (!LoadAnalysis.routed(stops)) {
             return Optional.empty();
         }
-        List<Set<Integer>> above = restingAbove(units);
-        for (int index = 0; index < above.size(); index++) {
-            for (int upper : above.get(index)) {
-                if (stops.get(upper) > stops.get(index)) {
-                    return Optional.of(new Violation("unloading_order_violation",
-                            units.get(index).label() + " blocked by " + units.get(upper).label()));
-                }
-            }
-        }
-        return Optional.empty();
+        return analysis(units).routeOrderViolated(stops);
     }
 
     public static Optional<Violation> stackLimitExceeded(List<LoadUnit> units) {

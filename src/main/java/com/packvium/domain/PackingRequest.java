@@ -1,5 +1,6 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -11,10 +12,10 @@ public record PackingRequest(List<Item> items, List<Container> containers, List<
         containers = List.copyOf(containers);
         fixedPlacements = List.copyOf(fixedPlacements);
         if (items.isEmpty()) {
-            throw new IllegalArgumentException("at least one item is required");
+            throw new ObjectRefusal("invalid_value", "at least one item is required");
         }
         if (containers.isEmpty()) {
-            throw new IllegalArgumentException("at least one container is required");
+            throw new ObjectRefusal("invalid_value", "at least one container is required");
         }
         requireUnique(items, Item::id, "item");
         requireUnique(containers, Container::id, "container");
@@ -37,7 +38,7 @@ public record PackingRequest(List<Item> items, List<Container> containers, List<
         HashSet<String> seen = new HashSet<>();
         for (T value : values) {
             if (!seen.add(id.apply(value))) {
-                throw new IllegalArgumentException(kind + " ids must be unique");
+                throw new ObjectRefusal("duplicate_id", kind + " ids must be unique");
             }
         }
     }

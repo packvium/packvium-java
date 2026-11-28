@@ -1,5 +1,7 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
+import com.packvium.support.PythonRepr;
 import com.packvium.unit.Length;
 import com.packvium.unit.Weight;
 import java.util.ArrayList;
@@ -98,34 +100,35 @@ public record Item(
     private static void requireScalarRules(String id, long quantity, double minimumSupportRatio,
             Optional<Long> maxStackedItems, Optional<String> groundContactRule) {
         if (id.isEmpty()) {
-            throw new IllegalArgumentException("item id is required");
+            throw new ObjectRefusal("invalid_value", "item id is required");
         }
         if (quantity <= 0) {
-            throw new IllegalArgumentException("item quantity must be positive");
+            throw new ObjectRefusal("below_minimum", "item quantity must be positive");
         }
-        if (minimumSupportRatio < 0 || minimumSupportRatio > 1) {
-            throw new IllegalArgumentException("minimum_support_ratio must be between 0 and 1");
+        if (!ObjectRefusal.isRatio(minimumSupportRatio)) {
+            throw ObjectRefusal.ratio(minimumSupportRatio, "minimum_support_ratio must be between 0 and 1");
         }
         if (maxStackedItems.isPresent() && maxStackedItems.get() < 1) {
-            throw new IllegalArgumentException("max_stacked_items must be at least 1");
+            throw new ObjectRefusal("below_minimum", "max_stacked_items must be at least 1");
         }
         if (groundContactRule.isPresent() && !GROUND_CONTACT_RULES.contains(groundContactRule.get())) {
-            throw new IllegalArgumentException(
-                    "ground_contact_rule must be one of " + String.join(", ", GROUND_CONTACT_RULES));
+            throw new ObjectRefusal("not_allowed", "ground_contact_rule must be one of "
+                    + PythonRepr.strings(GROUND_CONTACT_RULES.stream().sorted().toList()));
         }
     }
 
     private static void requireRouteAndValue(Dimensions dimensions, Optional<Length> nestingHeight,
             Optional<Long> stopIndex, Optional<Long> value) {
         if (nestingHeight.isPresent() && nestingHeight.get().ticks() >= dimensions.height().ticks()) {
-            throw new IllegalArgumentException(
+            throw new ObjectRefusal("invalid_value",
                     "nesting_height must be at least zero and strictly less than the item's own height");
         }
         if (stopIndex.isPresent() && (stopIndex.get() < 0 || stopIndex.get() > MAX_EXACT_STOP_INDEX)) {
-            throw new IllegalArgumentException("stop_index must be a non-negative safe integer");
+            throw new ObjectRefusal(stopIndex.get() < 0 ? "below_minimum" : "above_maximum",
+                    "stop_index must be a non-negative safe integer");
         }
         if (value.isPresent() && value.get() < 0) {
-            throw new IllegalArgumentException("value must be non-negative");
+            throw new ObjectRefusal("below_minimum", "value must be non-negative");
         }
     }
 
@@ -134,7 +137,7 @@ public record Item(
                 ? allowed.stream().filter(Rotation.upright()::contains).toList()
                 : List.copyOf(allowed);
         if (admitted.isEmpty()) {
-            throw new IllegalArgumentException("at least one rotation must be allowed");
+            throw new ObjectRefusal("invalid_value", "at least one rotation must be allowed");
         }
         return admitted;
     }
@@ -148,16 +151,20 @@ public record Item(
     private static Optional<List<Vertex>> admitShape(ShapeType shapeType, Optional<List<Vertex>> hullVertices,
             Optional<Long> ratioPpm, Optional<Long> limitKpa, Dimensions dimensions,
             Optional<Length> nestingHeight) {
+        // The value's own floor first, as the JSON rules check it before the shape.
+        if (limitKpa.isPresent() && limitKpa.get() < 0) {
+            throw new ObjectRefusal("below_minimum", "max_compression_pressure_kpa cannot be negative");
+        }
         for (Map.Entry<String, Boolean> field : foreignFields(shapeType, hullVertices, ratioPpm, limitKpa).entrySet()) {
             if (field.getValue()) {
-                throw new IllegalArgumentException(
+                throw new ObjectRefusal("invalid_value",
                         field.getKey() + " is not part of a " + shapeType.wireName() + " item");
             }
         }
         // Both rewrite occupied height; choosing an order silently would give each engine its own
         // contract, so the interaction is refused until a task defines it.
         if (nestingHeight.isPresent() && shapeType != ShapeType.RIGID_CUBOID) {
-            throw new IllegalArgumentException(
+            throw new ObjectRefusal("invalid_value",
                     "nesting_height with shape_type " + shapeType.wireName() + " is not supported yet");
         }
         return switch (shapeType) {
@@ -177,7 +184,7 @@ public record Item(
             foreign.put("hull_vertices", hullVertices.isPresent());
         }
         if (shapeType != ShapeType.COMPRESSIBLE) {
-            foreign.put("compression_ratio", ratioPpm.isPresent());
+            foreign.put("compression_ratio_ppm", ratioPpm.isPresent());
             foreign.put("max_compression_pressure_kpa", limitKpa.isPresent());
         }
         return foreign;
@@ -185,14 +192,14 @@ public record Item(
 
     private static List<Vertex> admitHull(Optional<List<Vertex>> hullVertices, Dimensions dimensions) {
         List<Vertex> vertices = HullShape.validate(hullVertices.orElseThrow(
-                () -> new IllegalArgumentException("a convex_hull item requires hull_vertices")));
+                () -> new ObjectRefusal("invalid_value", "a convex_hull item requires hull_vertices")));
         Vertex[] extent = HullShape.boundingExtent(vertices);
         long[] declared = {dimensions.length().ticks(), dimensions.width().ticks(), dimensions.height().ticks()};
         for (int axis = 0; axis < 3; axis++) {
             // `dimensions` stays the broad phase and the candidate envelope, so a hull poking out
             // of it would be collision-tested against space the solver never reserved.
             if (extent[1].component(axis) - extent[0].component(axis) > declared[axis]) {
-                throw new IllegalArgumentException("hull_vertices span does not fit inside dimensions");
+                throw new ObjectRefusal("invalid_value", "hull_vertices span does not fit inside dimensions");
             }
         }
         return vertices;
@@ -200,14 +207,11 @@ public record Item(
 
     private static void admitCompression(Optional<Long> ratioPpm, Optional<Long> limitKpa) {
         if (ratioPpm.isEmpty() || limitKpa.isEmpty()) {
-            throw new IllegalArgumentException(
+            throw new ObjectRefusal("invalid_value",
                     "a compressible item requires both compression_ratio and max_compression_pressure_kpa");
         }
         if (ratioPpm.get() < 0 || ratioPpm.get() > Compression.PPM) {
-            throw new IllegalArgumentException("compression_ratio must be between zero and one");
-        }
-        if (limitKpa.get() < 0) {
-            throw new IllegalArgumentException("max_compression_pressure_kpa cannot be negative");
+            throw new ObjectRefusal("invalid_value", "compression_ratio must be between zero and one");
         }
     }
 

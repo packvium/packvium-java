@@ -1,5 +1,6 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
 import com.packvium.unit.Length;
 import com.packvium.unit.Rounding;
 import com.packvium.unit.Weight;
@@ -19,14 +20,14 @@ public record Dimensions(Length length, Length width, Length height) {
     }
 
     public static Dimensions of(String length, String width, String height, String unit) {
-        return new Dimensions(
+        return read(
                 Length.of(length, unit, Rounding.NEAREST),
                 Length.of(width, unit, Rounding.NEAREST),
                 Length.of(height, unit, Rounding.NEAREST));
     }
 
     public static Dimensions mm(long length, long width, long height) {
-        return new Dimensions(Length.mm(length), Length.mm(width), Length.mm(height));
+        return read(Length.mm(length), Length.mm(width), Length.mm(height));
     }
 
     /** Decimal or fractional millimetres, e.g. {@code "12.5"} or {@code "3/16"}. */
@@ -39,13 +40,24 @@ public record Dimensions(Length length, Length width, Length height) {
         return of(length, width, height, "in");
     }
 
+    /**
+     * Sides read from the caller's input, where a zero side is a request refusal; the constructor
+     * still guards the arithmetic with a plain error.
+     */
+    private static Dimensions read(Length length, Length width, Length height) {
+        if (Math.min(length.ticks(), Math.min(width.ticks(), height.ticks())) <= 0) {
+            throw new ObjectRefusal("invalid_value", "all dimensions must be positive");
+        }
+        return new Dimensions(length, width, height);
+    }
+
     public static Dimensions ofTicks(long length, long width, long height) {
         return new Dimensions(new Length(length), new Length(width), new Length(height));
     }
 
     /** Reads {length, width, height}, each in any request spelling of a length. */
     public static Dimensions fromMap(Map<?, ?> data, String unit, Rounding rounding) {
-        return new Dimensions(
+        return read(
                 Length.parse(data.get("length"), unit, rounding),
                 Length.parse(data.get("width"), unit, rounding),
                 Length.parse(data.get("height"), unit, rounding));

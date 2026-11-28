@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Execution.java
+ *     java -cp target/packvium-1.7.0.jar examples/Execution.java
  * </pre>
  *
  * <p>{@code pack()} answers where every box goes. That answer is not yet a work order: it does

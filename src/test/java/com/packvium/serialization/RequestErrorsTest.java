@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.packvium.algorithm.UnknownSolverException;
 import com.packvium.config.EffortBudget;
 import com.packvium.config.PackingConfig;
 import com.packvium.config.SolverProfile;
@@ -144,13 +143,19 @@ class RequestErrorsTest {
         nullUnit.put("length", null);
         return Stream.of(
                 Arguments.of(container("obstacles", List.of(noId)), "'id'"),
-                Arguments.of(container("obstacles", List.of(nullAxis)), "[<class 'decimal.ConversionSyntax'>]"),
+                Arguments.of(container("obstacles", List.of(nullAxis)), "invalid decimal or fraction: None"),
                 Arguments.of(container("rate_table", Map.of("prices_minor", List.of(500L))), "'weight_brackets_g'"),
                 Arguments.of(container("rate_table", Map.of("weight_brackets_g", List.of(1000L))), "'prices_minor'"),
                 Arguments.of(item("tags", List.of(List.of())), "unhashable type: 'list'"),
                 Arguments.of(item("tags", List.of(Map.of("k", 1L))), "unhashable type: 'dict'"),
                 Arguments.of(top("units", nullUnit), "unsupported length unit: None"),
                 Arguments.of(item("id", ""), "item id is required"),
+                // The reference names the model's field, not the request's.
+                Arguments.of(item("compression_ratio", new BigDecimal("0.5")),
+                        "compression_ratio_ppm is not part of a rigid_cuboid item"),
+                Arguments.of(item("compression_ratio", new BigDecimal("0.5"))
+                        .andThen(item("shape_type", "rigid_cuboid")),
+                        "compression_ratio_ppm is not part of a rigid_cuboid item"),
                 Arguments.of(side("width", "0"), "all dimensions must be positive"),
                 Arguments.of(container("id", ""), "container id is required"),
                 Arguments.of(container("inner_dimensions", Map.of("length", "1", "width", "100", "height", "200"))
@@ -161,25 +166,34 @@ class RequestErrorsTest {
                 Arguments.of(configuration("seed", List.of(1L)),
                         "int() argument must be a string, a bytes-like object or a real number, not 'list'"),
                 Arguments.of(configuration("seed", Map.of("value", "1")),
-                        "int() argument must be a string, a bytes-like object or a real number, not 'dict'"),
-                Arguments.of(configuration("solvers", 1L), "'int' object is not iterable"),
-                Arguments.of(configuration("solvers", true), "'bool' object is not iterable"));
+                        "int() argument must be a string, a bytes-like object or a real number, not 'dict'"));
     }
 
-    /** What {@code int()} and {@code tuple()} accept is answered, as the reference answers it. */
+    /** What {@code int()} accepts is answered, as the reference answers it. */
     static Stream<Consumer<Map<String, Object>>> coercedConfiguration() {
         return Stream.of(configuration("seed", true), configuration("seed", false),
                 configuration("seed", new BigDecimal("1.5")), configuration("seed", " -1 "),
-                configuration("seed", "1_000"), configuration("solvers", Map.of()));
+                configuration("seed", "1_000"), configuration("solvers", List.of()));
     }
 
-    @Test
-    void aSolverStringIsIteratedIntoUnknownNamesAsInPython() {
-        Map<String, Object> data = request();
-        configuration("solvers", "x").accept(data);
-        assertEquals("unknown solver name(s) ['x']; expected one of ['exact_small', 'extreme_points', 'grid', "
-                + "'homogeneous_blocks', 'layer', 'maximal_spaces']",
-                assertThrows(UnknownSolverException.class, () -> RequestPacker.pack(data)).getMessage());
+    /** The solver list is a closed vocabulary: anything but a list of its names is refused at its pointer. */
+    static Stream<Arguments> solverLists() {
+        String names = "must be one of [\"grid\",\"extreme_points\",\"homogeneous_blocks\",\"layer\","
+                + "\"maximal_spaces\",\"exact_small\"]";
+        return Stream.of(
+                Arguments.of(1L, "wrong_type", "/configuration/solvers", "must be a list"),
+                Arguments.of(true, "wrong_type", "/configuration/solvers", "must be a list"),
+                Arguments.of("x", "wrong_type", "/configuration/solvers", "must be a list"),
+                Arguments.of(Map.of(), "wrong_type", "/configuration/solvers", "must be a list"),
+                Arguments.of(List.of("grid", 3L), "not_allowed", "/configuration/solvers/1", names));
+    }
+
+    @ParameterizedTest
+    @MethodSource("solverLists")
+    void aSolverListOutsideTheVocabularyIsRefusedAtItsPointer(Object solvers, String reason, String field,
+            String detail) {
+        InvalidRequestException error = refusal(configuration("solvers", solvers));
+        assertEquals(List.of(reason, field, detail), List.of(error.reason(), error.field(), error.detail()));
     }
 
     @ParameterizedTest
@@ -264,7 +278,8 @@ class RequestErrorsTest {
 
     @Test
     void whatTheRulesDoNotNameStillArrivesAsARequestError() {
-        InvalidRequestException error = refusal(item("shape_type", "blob"));
+        // A model rule the schema does not state: an item needs at least one rotation.
+        InvalidRequestException error = refusal(item("allowed_rotations", List.of()));
         assertEquals(List.of("invalid_request", "invalid_value", ""),
                 List.of(error.errorCode(), error.reason(), error.field()));
     }
@@ -326,6 +341,40 @@ class RequestErrorsTest {
     }
 
     // ------------------------------------------------------------------------------ edits
+
+    /** Without an output block the result is in the request's unit, spelt as an output code. */
+    static Stream<Arguments> requestUnits() {
+        return Stream.of(Arguments.of("cm", "cm"), Arguments.of("MM", "mm"), Arguments.of("IN", "in"),
+                Arguments.of("Inches", "in"), Arguments.of("millimeter", "mm"), Arguments.of("tick", "mm"),
+                Arguments.of(" in ", "in"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("requestUnits")
+    void withoutAnOutputBlockTheResultIsInTheRequestUnitSpeltAsItsCode(String requestUnit, String outputUnit) {
+        Map<String, Object> data = request();
+        data.put("units", Map.of("length", requestUnit));
+        Map<?, ?> container = (Map<?, ?>) ((List<?>) RequestPacker.pack(data).get("containers")).get(0);
+        assertEquals(outputUnit, ((Map<?, ?>) ((Map<?, ?>) container.get("inner_dimensions")).get("length")).get("unit"));
+    }
+
+    static Stream<Object> nestingHeights() {
+        return Stream.of("100", Map.of("value", "11", "unit", "cm"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("nestingHeights")
+    void aNestingHeightNotBelowTheHeightIsRefusedAtItsPointer(Object nesting) {
+        InvalidRequestException error = refusal(item("nesting_height", nesting));
+        assertEquals(List.of("invalid_value", "/items/0/nesting_height", "must be less than the item's height"),
+                List.of(error.reason(), error.field(), error.detail()));
+    }
+
+    @Test
+    void anOutputTickUnitIsRefused() {
+        InvalidRequestException error = refusal(top("output", Map.of("length_unit", "ticks")));
+        assertEquals(List.of("not_allowed", "/output/length_unit"), List.of(error.reason(), error.field()));
+    }
 
     private static Consumer<Map<String, Object>> top(String name, Object value) {
         return data -> data.put(name, value);

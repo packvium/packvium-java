@@ -20,8 +20,9 @@ public final class DeterministicRandom {
     private long state;
 
     public DeterministicRandom(long seed) {
-        // PHP's % keeps the dividend's sign; Java's does too.
-        state = seed % MODULUS;
+        // Java's % keeps the dividend's sign, the reference's does not, and the shuffle indexes by
+        // the draw: a negative seed must start where the reference starts.
+        state = Math.floorMod(seed, MODULUS);
     }
 
     private long bits() {

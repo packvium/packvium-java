@@ -4,6 +4,63 @@ What changed in `com.packvium:packvium` on Maven Central, release by release. Th
 follows [Keep a Changelog](https://keepachangelog.com/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0]
+
+Corresponds to Packvium 1.7.0. Python, PHP, Java, .NET and Go return identical results at the
+same version; Rust and JavaScript return a valid answer at or above the objective floor. No
+request or result field changes; check the behaviour changes under *Changed*.
+
+### Added
+
+- The reference result validator: `com.packvium.validation.ResultValidator.validate(request,
+  result)` judges any Packvium result against its request from the two JSON documents alone
+  (decoded, or as text) and returns `ResultIssue`s with the same codes and details, in the same
+  order, that every Packvium package returns. A result whose shape breaks the contract is refused
+  with `MalformedResult`, of kind `CONTRACT` or `SHAPE`. It shares no code with the engine; the
+  engine's own post-solve check is unchanged.
+- `com.packvium.support.ObjectRefusal`, the `InvalidRequestException` a model throws when it
+  refuses a value on its own: it carries the request format's reason (`below_minimum`,
+  `invalid_value`, `not_allowed`, ...) and an empty field.
+
+### Changed
+
+- `quality` looks ahead in the homogeneous-block solver: each round completes its 4 leading
+  blocks greedily on a copy and commits the one whose completion ranks best, within a budget of
+  64 times `container_plan_node_limit` lattice nodes. The answer is never worse than the greedy
+  pass, and **a `quality` answer can differ from Java 1.6.0**; `fast` and `balanced` are
+  unchanged. Under a tight effort budget the block solver can now report `truncated` /
+  `effort_limit` where 1.6.0 reported it complete.
+- `Packer.pack` checks a request built from objects with the JSON request rules first, so it is
+  refused with the reason and JSON Pointer the same request as JSON gets: a quantity past
+  2^53 - 1 is `above_maximum` at `/items/0/quantity`. A `FixedPlacement` with a
+  `containerInstance` below 1 is now refused by `pack` as `invalid_fixed_placement`, not by its
+  constructor. Model constructors throw `ObjectRefusal` (still an `IllegalArgumentException`) with
+  the text they threw before.
+- Every value outside a closed list -- `allowed_rotations`, `shape_type`, `ground_contact_rule`,
+  `configuration.solvers`, and the output and dimensional-weight units -- is refused as
+  `invalid_request` / `not_allowed` at its JSON Pointer. **`ticks` is no longer accepted as an
+  output unit**, and a `solvers` value that is not a list is `wrong_type`.
+- A `nesting_height` not below the item's own height is refused as `invalid_value` at its
+  pointer. Without an `output` block the result is written in the request's `units.length`
+  spelt as its output code (`"Inches"` writes `in`, `tick` writes `mm`).
+- A boolean is never a measure, also as a measure object's `value`: it is `wrong_type`.
+- A `covered` ground-contact rule counts only supporters that share area with the item's base;
+  a neighbour touching a corner along an edge no longer covers it.
+- A route-order refusal names the first violator in index order, and an axle container no longer
+  scans the same candidate point twice, so effort counters on axle requests can be lower than in
+  1.6.0.
+- A negative `seed` shuffles the multi-start orders as the other engines do.
+- Refusal texts now read as the other engines': `placement.orientation must be one of [...]`
+  for a plan revision or a fixed placement, `the front axle must be strictly nearer ...`, and
+  `invalid decimal or fraction: ...`.
+
+### Fixed
+
+- The support walk over a tall stack and the cycle check of a loading-dependency graph are
+  iterative, so neither depth depends on the stack's height.
+- The homogeneous-block solver breaks a tie between two equal packings by comparing their
+  placements field by field, as the other engines do, not by a joined string.
+
 ## [1.6.0]
 
 Corresponds to Packvium 1.6.0. Python, PHP, Java, .NET and Go return identical results at the

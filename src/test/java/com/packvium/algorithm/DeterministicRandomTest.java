@@ -24,4 +24,12 @@ class DeterministicRandomTest {
         List<Integer> shuffled = new DeterministicRandom(7).shuffled(IntStream.range(0, 10).boxed().toList());
         assertEquals(List.of(6, 1, 4, 9, 8, 2, 7, 3, 5, 0), shuffled);
     }
+
+    /** A negative seed reduces to its residue modulo 2^31, as in the reference engine (tag v1.7.0). */
+    @Test
+    void aNegativeSeedShufflesAsTheReferenceDoes() {
+        List<Integer> values = IntStream.range(0, 10).boxed().toList();
+        assertEquals(List.of(5, 0, 3, 4, 8, 7, 6, 9, 2, 1), new DeterministicRandom(-7).shuffled(values));
+        assertEquals(new DeterministicRandom((1L << 31) - 7).shuffled(values), new DeterministicRandom(-7).shuffled(values));
+    }
 }

@@ -310,13 +310,12 @@ public final class LoadSupportGraph {
     /**
      * Direct support for one active candidate: O(m) time and O(m) output space.
      *
-     * <p>Ordinary face semantics are retained exactly. With an exact adjacent nesting
-     * predecessor, shadowed same-column face surfaces are removed and that predecessor becomes
-     * one full-area supporter. Every returned list stays in placement-index order, so
+     * <p>A box whose top is on the candidate's base plane supports it when the two overlap with
+     * positive area. With an exact adjacent nesting predecessor, shadowed same-column face
+     * supporters are removed and that predecessor becomes one full-area supporter. Every returned list stays in placement-index order, so
      * remainder and traversal decisions remain canonical.
      */
     public static DirectSupportView candidateView(List<Placement> placements, ItemInstance item, AxisAlignedBox box) {
-        List<SupportEntry> surfaceEntries = new ArrayList<>();
         List<SupportEntry> supporterEntries = new ArrayList<>();
         SupportEntry nearestLower = null;
         boolean nesting = item.item().nestingHeight().isPresent();
@@ -324,7 +323,6 @@ public final class LoadSupportGraph {
             Placement placement = placements.get(index);
             AxisAlignedBox other = placement.envelopeBox();
             if (other.z2() == box.origin().z()) {
-                surfaceEntries.add(new SupportEntry(index, other, 0));
                 long area = other.overlapAreaXY(box);
                 if (area > 0) {
                     supporterEntries.add(new SupportEntry(index, other, area));
@@ -341,9 +339,7 @@ public final class LoadSupportGraph {
                 && nearestLower.box().z2() - box.origin().z() == item.item().nestingHeight().get().ticks()
                 ? nearestLower : null;
         if (predecessor != null) {
-            surfaceEntries.removeIf(entry -> sameNestingColumn(placements.get(entry.index()), item, box));
             supporterEntries.removeIf(entry -> sameNestingColumn(placements.get(entry.index()), item, box));
-            surfaceEntries.add(insertionPoint(surfaceEntries, predecessor.index()), predecessor);
             supporterEntries.add(insertionPoint(supporterEntries, predecessor.index()),
                     new SupportEntry(predecessor.index(), predecessor.box(), predecessor.box().overlapAreaXY(box)));
         }
@@ -357,11 +353,7 @@ public final class LoadSupportGraph {
             areas.add(entry.area());
             totalArea = Math.addExact(totalArea, entry.area());
         }
-        List<AxisAlignedBox> surfaces = new ArrayList<>(surfaceEntries.size());
-        for (SupportEntry entry : surfaceEntries) {
-            surfaces.add(entry.box());
-        }
-        return new DirectSupportView(surfaces, indexes, boxes, areas, totalArea);
+        return new DirectSupportView(indexes, boxes, areas, totalArea);
     }
 
     private static int insertionPoint(List<SupportEntry> entries, int index) {

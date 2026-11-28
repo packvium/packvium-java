@@ -1,5 +1,7 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
+import com.packvium.support.PythonRepr;
 import com.packvium.unit.Weight;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,7 +54,7 @@ public record Container(
         metadata = Immutables.orderedMap(metadata);
         tagLimits = Immutables.orderedMap(tagLimits);
         if (id.isEmpty()) {
-            throw new IllegalArgumentException("container id is required");
+            throw new ObjectRefusal("invalid_value", "container id is required");
         }
         if (deformableBoundary.isPresent()) {
             requireBagFields(deformableBoundary.get(), obstacles, axles, accessDirections, maxStackDensity,
@@ -60,22 +62,22 @@ public record Container(
         }
         madeToMeasure.ifPresent(machine -> machine.admits(Sides.of(innerDimensions)));
         if (quantity.isPresent() && quantity.get() <= 0) {
-            throw new IllegalArgumentException("container quantity must be positive");
+            throw new ObjectRefusal("below_minimum", "container quantity must be positive");
         }
         if (costMinor < 0) {
-            throw new IllegalArgumentException("container cost cannot be negative");
+            throw new ObjectRefusal("below_minimum", "container cost cannot be negative");
         }
         if (maxItems.isPresent() && maxItems.get() < 1) {
-            throw new IllegalArgumentException("container max_items must be at least 1");
+            throw new ObjectRefusal("below_minimum", "container max_items must be at least 1");
         }
-        if (voidFillReserveRatio < 0 || voidFillReserveRatio > 1) {
-            throw new IllegalArgumentException("void_fill_reserve_ratio must be between 0 and 1");
+        if (!ObjectRefusal.isRatio(voidFillReserveRatio)) {
+            throw ObjectRefusal.ratio(voidFillReserveRatio, "void_fill_reserve_ratio must be between 0 and 1");
         }
         if (tagLimits.values().stream().anyMatch(limit -> limit < 1)) {
-            throw new IllegalArgumentException("tag_limits must be at least 1");
+            throw new ObjectRefusal("below_minimum", "tag_limits must be at least 1");
         }
         if (outerDimensions.isPresent() && !innerDimensions.fitsInside(outerDimensions.get())) {
-            throw new IllegalArgumentException("outer dimensions cannot be smaller than inner dimensions");
+            throw new ObjectRefusal("invalid_value", "outer dimensions cannot be smaller than inner dimensions");
         }
         requireObstaclesInside(innerDimensions, obstacles);
         axles.ifPresent(pair -> requireAxlesInside(innerDimensions, pair));
@@ -134,7 +136,7 @@ public record Container(
             List<String> accessDirections, Optional<Weight> maxStackDensity, Optional<Dimensions> outerDimensions,
             double voidFillReserveRatio) {
         if (!FlatBag.KINDS.contains(kind)) {
-            throw new IllegalArgumentException("unknown deformable_boundary kind '" + kind + "'");
+            throw new ObjectRefusal("not_allowed", "unknown deformable_boundary kind " + PythonRepr.string(kind));
         }
         Map<String, Boolean> present = new LinkedHashMap<>();
         present.put("obstacles", !obstacles.isEmpty());
@@ -145,7 +147,7 @@ public record Container(
         present.put("void_fill_reserve_ratio", voidFillReserveRatio > 0);
         for (Map.Entry<String, Boolean> field : present.entrySet()) {
             if (field.getValue()) {
-                throw new IllegalArgumentException(field.getKey() + " cannot be combined with deformable_boundary");
+                throw new ObjectRefusal("not_allowed", field.getKey() + " cannot be combined with deformable_boundary");
             }
         }
     }
@@ -159,7 +161,7 @@ public record Container(
         for (Obstacle obstacle : obstacles) {
             for (AxisAlignedBox box : obstacle.boxes()) {
                 if (!boundary.contains(box)) {
-                    throw new IllegalArgumentException("obstacle " + obstacle.id() + " lies outside container");
+                    throw new ObjectRefusal("invalid_value", "obstacle " + obstacle.id() + " lies outside container");
                 }
             }
         }
@@ -167,7 +169,7 @@ public record Container(
 
     private static void requireAxlesInside(Dimensions inner, AxlePair axles) {
         if (axles.rear().position().ticks() > inner.length().ticks()) {
-            throw new IllegalArgumentException("axle positions must lie within the container's length");
+            throw new ObjectRefusal("invalid_value", "axle positions must lie within the container's length");
         }
     }
 

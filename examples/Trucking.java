@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Trucking.java
+ *     java -cp target/packvium-1.7.0.jar examples/Trucking.java
  * </pre>
  *
  * <p>A van is not a big box. Its payload rides on two axles, and each axle has its own rating that

@@ -1,6 +1,7 @@
 package com.packvium.algorithm;
 
 import com.packvium.config.PackingConfig;
+import com.packvium.config.SolverProfile;
 import com.packvium.constraint.PlacementConstraint;
 import com.packvium.constraint.internal.DirectSupportView;
 import com.packvium.constraint.internal.LoadSupportGraph;
@@ -40,6 +41,10 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
     private static final BigInteger PPM = BigInteger.valueOf(1_000_000);
     /** Distinct group shapes one block solve remembers; the memo only saves arithmetic. */
     private static final int LATTICE_MEMO_LIMIT = 4096;
+    /** Leading blocks the {@code quality} lookahead completes in each round. */
+    public static final int LOOKAHEAD_WIDTH = 4;
+    /** The lookahead's lattice-node budget per mode, as a multiple of the node limit. */
+    public static final long LOOKAHEAD_NODE_FACTOR = 64;
 
     private final List<PlacementConstraint> constraints;
     private final List<Mode> modes;
@@ -93,6 +98,10 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
             }
             SingleContainerSolution solution = packMode(container, sequence, items, config, stats, deadline, mode,
                     limit, lattices);
+            if (config.profile() == SolverProfile.QUALITY && !deadline.expired()) {
+                solution = lookahead(container, sequence, items, config, stats, deadline, mode,
+                        limit * LOOKAHEAD_NODE_FACTOR, lattices, solution);
+            }
             reached = reached || solution.timeLimitReached();
             if (best == null || solutionKey(solution, byVolume).compareTo(solutionKey(best, byVolume)) < 0) {
                 best = solution;
@@ -133,51 +142,171 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
         ContainerState state = solution.state();
         if (byVolume) {
             return SortKey.of(state.usedVolume.negate(), (long) solution.unpacked().size(), state.maxZ,
-                    state.placementSignature());
+                    signature(state));
         }
         return SortKey.of((long) solution.unpacked().size(), state.usedVolume.negate(), state.maxZ,
-                state.placementSignature());
+                signature(state));
+    }
+
+    /**
+     * Each placement's instance id and envelope origin, in placement order, compared element by
+     * element: ids by code point, coordinates by value. Two lookahead completions often tie on
+     * every field before it, so it decides between them. O(P).
+     */
+    private static SortKey signature(ContainerState state) {
+        List<Object> placements = new ArrayList<>(state.placements.size());
+        for (Placement placement : state.placements) {
+            Point origin = placement.envelopeOrigin();
+            placements.add(SortKey.of(placement.instance().id(), origin.x(), origin.y(), origin.z()));
+        }
+        return new SortKey(placements);
     }
 
     private static SingleContainerSolution packMode(Container container, long sequence, List<ItemInstance> items,
             PackingConfig config, SearchStats stats, Deadline deadline, Mode mode, long limit,
             Map<Group, Lattice> lattices) {
-        ContainerState state = new ContainerState(container, sequence);
-        List<Space> spaces = List.of(new Space(Point.ORIGIN, container.innerDimensions()));
-        // Keyed by item id in byte order, as the reference engine's ksort(SORT_STRING) does.
+        Map<String, List<ItemInstance>> remaining = byType(items);
+        Completion completion = complete(container, new ContainerState(container, sequence),
+                List.of(new Space(Point.ORIGIN, container.innerDimensions())), remaining, forms(remaining, config),
+                config, stats, deadline, mode, limit, lattices, new long[] {0});
+        SingleContainerSolution solution = completion.solution();
+        return new SingleContainerSolution(solution.state(), solution.unpacked(), false,
+                completion.reached() || deadline.expired(), false);
+    }
+
+    /** The items by type, keyed by item id in byte order, as the reference engine's ksort(SORT_STRING) does. */
+    private static Map<String, List<ItemInstance>> byType(List<ItemInstance> items) {
         Map<String, List<ItemInstance>> remaining = new TreeMap<>(SortKey::compareCodePoints);
         for (ItemInstance instance : items) {
             remaining.computeIfAbsent(instance.item().id(), key -> new ArrayList<>()).add(instance);
         }
+        return remaining;
+    }
+
+    private static Map<String, List<Form>> forms(Map<String, List<ItemInstance>> remaining, PackingConfig config) {
         Map<String, List<Form>> forms = new HashMap<>();
         remaining.forEach((itemId, available) -> forms.put(itemId, forms(available.get(0), config)));
-        long[] nodes = {0};
+        return forms;
+    }
+
+    /**
+     * Commit each round's leading block until nothing more fits; mutates {@code state} and
+     * {@code remaining}. The solution's limit flag is whether a limit stopped it; a stopped round
+     * commits nothing.
+     */
+    private static Completion complete(Container container, ContainerState state, List<Space> spaces,
+            Map<String, List<ItemInstance>> remaining, Map<String, List<Form>> forms, PackingConfig config,
+            SearchStats stats, Deadline deadline, Mode mode, long limit, Map<Group, Lattice> lattices, long[] nodes) {
         boolean reached = false;
-        while (!spaces.isEmpty() && remaining.values().stream().anyMatch(list -> !list.isEmpty())) {
-            Optional<Block> best;
+        List<Space> free = spaces;
+        while (!free.isEmpty() && anyRemaining(remaining)) {
+            List<Block> leading;
             try {
-                best = nextBlock(container, state, spaces, remaining, forms, stats, deadline, mode, limit, lattices,
-                        nodes);
+                leading = leadingBlocks(container, state, free, remaining, forms, stats, deadline, mode, limit,
+                        lattices, nodes, 1);
             } catch (SearchCut cut) {
                 reached = true;
                 break;
             }
-            if (best.isEmpty()) {
+            if (leading.isEmpty()) {
                 break;
             }
-            Block block = best.get();
-            List<ItemInstance> available = remaining.get(block.itemId());
-            List<ItemInstance> chosen = new ArrayList<>(available.subList(0, (int) block.count()));
-            remaining.put(block.itemId(), new ArrayList<>(available.subList((int) block.count(), available.size())));
-            commit(state, block, chosen, config, stats);
-            Dimensions blockDimensions = Dimensions.ofTicks(block.nx() * block.envelope().length().ticks(),
-                    block.ny() * block.envelope().width().ticks(), block.nz() * block.envelope().height().ticks());
-            spaces = MaximalSpaceSolver.subtractAll(spaces,
-                    List.of(new AxisAlignedBox(block.space().origin(), blockDimensions)), Optional.of(stats));
+            free = commitBlock(state, free, remaining, leading.get(0), config, stats);
         }
         List<ItemInstance> unpacked = new ArrayList<>();
         remaining.values().forEach(unpacked::addAll);
-        return new SingleContainerSolution(state, unpacked, false, reached || deadline.expired(), false);
+        return new Completion(new SingleContainerSolution(state, unpacked, false, reached, false), reached);
+    }
+
+    /**
+     * {@code greedy}, or a better answer from completing each round's leading blocks.
+     *
+     * <p>Each round ranks its {@value #LOOKAHEAD_WIDTH} leading blocks, completes each one greedily on
+     * a copy, and commits the block whose completion ranks best. The greedy answer is the first
+     * completion, so the result is never worse than it. The round's first block is the greedy
+     * choice after the block committed last, so its completion is the one already known -- unless
+     * the greedy pass was stopped by a limit, when the first round completes it under the
+     * lookahead's larger budget. All of it is counted against {@code limit}, its own lattice-node
+     * budget; when that runs out the best completion so far stands, and only the deadline or the
+     * effort budget marks the answer as stopped. Each round costs at most {@value #LOOKAHEAD_WIDTH}
+     * greedy completions, O(W*B) rounds of the greedy enumeration for W leaders and B blocks, all
+     * inside the node budget.
+     */
+    private static SingleContainerSolution lookahead(Container container, long sequence, List<ItemInstance> items,
+            PackingConfig config, SearchStats stats, Deadline deadline, Mode mode, long limit,
+            Map<Group, Lattice> lattices, SingleContainerSolution greedy) {
+        boolean byVolume = config.objective().equals("maximum_volume");
+        ContainerState state = new ContainerState(container, sequence);
+        List<Space> spaces = List.of(new Space(Point.ORIGIN, container.innerDimensions()));
+        Map<String, List<ItemInstance>> remaining = byType(items);
+        Map<String, List<Form>> forms = forms(remaining, config);
+        SingleContainerSolution best = greedy;
+        SortKey bestKey = solutionKey(greedy, byVolume);
+        SingleContainerSolution known = greedy.timeLimitReached() ? null : greedy;
+        long[] nodes = {0};
+        while (!spaces.isEmpty() && anyRemaining(remaining)) {
+            List<Block> leading;
+            try {
+                leading = leadingBlocks(container, state, spaces, remaining, forms, stats, deadline, mode, limit,
+                        lattices, nodes, LOOKAHEAD_WIDTH);
+            } catch (SearchCut cut) {
+                break;
+            }
+            if (leading.isEmpty()) {
+                break;
+            }
+            Choice chosen = known == null ? null : new Choice(solutionKey(known, byVolume), known, leading.get(0));
+            boolean reached = false;
+            for (Block block : known == null ? leading : leading.subList(1, leading.size())) {
+                ContainerState trialState = state.copy();
+                Map<String, List<ItemInstance>> trialRemaining = copyOf(remaining);
+                List<Space> trialSpaces = commitBlock(trialState, spaces, trialRemaining, block, config, stats);
+                Completion trial = complete(container, trialState, trialSpaces, trialRemaining, forms, config,
+                        stats, deadline, mode, limit, lattices, nodes);
+                if (trial.reached()) {
+                    reached = true;
+                    break;
+                }
+                SortKey trialKey = solutionKey(trial.solution(), byVolume);
+                if (chosen == null || trialKey.compareTo(chosen.key()) < 0) {
+                    chosen = new Choice(trialKey, trial.solution(), block);
+                }
+            }
+            if (reached || chosen == null) {
+                break;
+            }
+            known = chosen.solution();
+            if (chosen.key().compareTo(bestKey) < 0) {
+                best = known;
+                bestKey = chosen.key();
+            }
+            spaces = commitBlock(state, spaces, remaining, chosen.block(), config, stats);
+        }
+        return new SingleContainerSolution(best.state(), best.unpacked(), false,
+                best.timeLimitReached() || deadline.expired(), false);
+    }
+
+    private static boolean anyRemaining(Map<String, List<ItemInstance>> remaining) {
+        return remaining.values().stream().anyMatch(list -> !list.isEmpty());
+    }
+
+    private static Map<String, List<ItemInstance>> copyOf(Map<String, List<ItemInstance>> remaining) {
+        Map<String, List<ItemInstance>> copy = new TreeMap<>(SortKey::compareCodePoints);
+        remaining.forEach((itemId, available) -> copy.put(itemId, new ArrayList<>(available)));
+        return copy;
+    }
+
+    /** Place every member of {@code block}, bottom layer first, and return the spaces left. */
+    private static List<Space> commitBlock(ContainerState state, List<Space> spaces,
+            Map<String, List<ItemInstance>> remaining, Block block, PackingConfig config, SearchStats stats) {
+        List<ItemInstance> available = remaining.get(block.itemId());
+        List<ItemInstance> chosen = new ArrayList<>(available.subList(0, (int) block.count()));
+        remaining.put(block.itemId(), new ArrayList<>(available.subList((int) block.count(), available.size())));
+        commit(state, block, chosen, config, stats);
+        Dimensions blockDimensions = Dimensions.ofTicks(block.nx() * block.envelope().length().ticks(),
+                block.ny() * block.envelope().width().ticks(), block.nz() * block.envelope().height().ticks());
+        return MaximalSpaceSolver.subtractAll(spaces,
+                List.of(new AxisAlignedBox(block.space().origin(), blockDimensions)), Optional.of(stats));
     }
 
     /** Each unique rotation of a type with its envelope and physical volume. */
@@ -205,14 +334,15 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
     }
 
     /**
-     * One round's winning block. A group's nodes are counted at once, and the stop the per-node
-     * loop made is reproduced: its first node polls the deadline, and a counted limit falling
-     * inside the group is charged exactly the nodes that loop expanded before stopping. A stop
-     * discards the round ({@link SearchCut}).
+     * One round's {@code leaders} leading blocks, best first. A group's nodes are counted at once,
+     * and the stop the per-node loop made is reproduced: its first node polls the deadline, and a
+     * counted limit falling inside the group is charged exactly the nodes that loop expanded before
+     * stopping. A stop discards the round ({@link SearchCut}). Keeping the leaders sorted costs
+     * O(W) per kept block for W leaders.
      */
-    private static Optional<Block> nextBlock(Container container, ContainerState state, List<Space> spaces,
+    private static List<Block> leadingBlocks(Container container, ContainerState state, List<Space> spaces,
             Map<String, List<ItemInstance>> remaining, Map<String, List<Form>> forms, SearchStats stats,
-            Deadline deadline, Mode mode, long limit, Map<Group, Lattice> lattices, long[] nodes) {
+            Deadline deadline, Mode mode, long limit, Map<Group, Lattice> lattices, long[] nodes, int leaders) {
         Optional<Long> ceiling = deadline.searchNodeCeiling(stats);
         // Capacity reads only the committed state, so it is fixed for the whole round.
         List<Map.Entry<String, Long>> types = new ArrayList<>();
@@ -225,7 +355,7 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
                 types.add(Map.entry(entry.getKey(), capacity));
             }
         }
-        Block best = null;
+        List<Block> leading = new ArrayList<>(leaders + 1);
         for (Space space : spaces) {
             Dimensions room = space.dimensions();
             for (Map.Entry<String, Long> type : types) {
@@ -264,19 +394,37 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
                     }
                     BigInteger lead = mode == Mode.COUNT ? BigInteger.valueOf(-lattice.count())
                             : BigInteger.valueOf(lattice.count()).multiply(form.volume()).negate();
-                    // The key's first field is -count or -used volume; a group that loses on it
-                    // loses on the key, so its key is never built.
-                    if (best == null || lead.compareTo(best.lead()) <= 0) {
-                        best = betterBlock(best, mode, space, type.getKey(), form, lattice);
+                    // The key's first field is -count or -used volume; a group that loses on it to
+                    // the last kept block loses on the key, so its key is never built.
+                    boolean full = leading.size() == leaders;
+                    if (full && lead.compareTo(leading.get(leaders - 1).lead()) > 0) {
+                        continue;
                     }
+                    Block block = block(mode, space, type.getKey(), form, lattice);
+                    if (full && block.score().compareTo(leading.get(leaders - 1).score()) >= 0) {
+                        continue;
+                    }
+                    insertRanked(leading, block, leaders);
                 }
             }
         }
-        return Optional.ofNullable(best);
+        return leading;
     }
 
-    /** {@code best}, or this group's winning block when its key ranks strictly ahead. */
-    private static Block betterBlock(Block best, Mode mode, Space space, String itemId, Form form, Lattice lattice) {
+    /** Inserts {@code block} by its key, after any equal key, and keeps the first {@code leaders}. */
+    private static void insertRanked(List<Block> leading, Block block, int leaders) {
+        int position = leading.size();
+        while (position > 0 && block.score().compareTo(leading.get(position - 1).score()) < 0) {
+            position--;
+        }
+        leading.add(position, block);
+        if (leading.size() > leaders) {
+            leading.remove(leaders);
+        }
+    }
+
+    /** A group's winning block with the key the mode ranks it by, smaller first. */
+    private static Block block(Mode mode, Space space, String itemId, Form form, Lattice lattice) {
         long count = lattice.count();
         BigInteger usedVolume = BigInteger.valueOf(count).multiply(form.volume());
         long spaceFill = usedVolume.multiply(PPM).divide(space.dimensions().volume()).longValueExact();
@@ -288,13 +436,10 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
         }
         key.addAll(List.of(space.origin().z(), space.origin().y(), space.origin().x(), itemId,
                 form.rotation().name(), lattice.nx(), lattice.ny(), lattice.nz()));
-        SortKey score = new SortKey(key);
-        if (best != null && score.compareTo(best.score()) >= 0) {
-            return best;
-        }
         return new Block(space, itemId, form.rotation(), form.physical(), form.envelope(), lattice.nx(), lattice.ny(),
-                lattice.nz(), count, (BigInteger) key.get(0), score);
+                lattice.nz(), count, (BigInteger) key.get(0), new SortKey(key));
     }
+
     private static void commit(ContainerState state, Block block, List<ItemInstance> chosen, PackingConfig config,
             SearchStats stats) {
         long clearance = config.clearance().ticks();
@@ -379,6 +524,14 @@ public final class HomogeneousBlockSolver implements SingleContainerSolver {
 
     private record Block(Space space, String itemId, Rotation rotation, Dimensions physical, Dimensions envelope,
             long nx, long ny, long nz, long count, BigInteger lead, SortKey score) {
+    }
+
+    /** A greedy completion and whether a limit stopped it. */
+    private record Completion(SingleContainerSolution solution, boolean reached) {
+    }
+
+    /** The block a lookahead round commits, with the completion that ranked it. */
+    private record Choice(SortKey key, SingleContainerSolution solution, Block block) {
     }
 
     /** The node limit or the deadline cut the enumeration; the incumbent of this round is dropped. */

@@ -9,12 +9,8 @@ package com.packvium.domain;
  */
 public record FixedPlacement(String itemId, String containerId, Point position, Rotation rotation,
         long containerInstance) {
-
-    public FixedPlacement {
-        if (containerInstance < 1) {
-            throw new IllegalArgumentException("container_instance counts from 1");
-        }
-    }
+    // Every rule on these fields is checked where the placement sits in a request, by
+    // Packer.pack, with the JSON path's refusal and pointer.
 
     public FixedPlacement(String itemId, String containerId, Point position, Rotation rotation) {
         this(itemId, containerId, position, rotation, 1);

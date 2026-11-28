@@ -38,7 +38,7 @@ import java.util.Optional;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Extensions.java
+ *     java -cp target/packvium-1.7.0.jar examples/Extensions.java
  * </pre>
  *
  * <p>Most packing rules are already fields on {@code Item} and {@code Container} -- see

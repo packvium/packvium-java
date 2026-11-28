@@ -113,9 +113,7 @@ public final class MeasureReading {
         if (amount instanceof Long || amount instanceof String || amount instanceof BigInteger) {
             return Optional.of(amount);
         }
-        if (amount instanceof Boolean flag) {
-            return Optional.of(flag ? 1L : 0L);
-        }
+        // A boolean is a number to some JSON readers, but never a measure anyone wrote: unreadable.
         if (amount instanceof BigDecimal) {
             // A fraction in binary floating point is refused here as it is bare.
             return Optional.ofNullable(JsonValue.wholeNumber(amount));

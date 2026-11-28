@@ -1,5 +1,6 @@
 package com.packvium.domain;
 
+import com.packvium.support.ObjectRefusal;
 import java.util.List;
 import java.util.OptionalLong;
 
@@ -21,23 +22,23 @@ public record RateTable(
         weightBracketsG = List.copyOf(weightBracketsG);
         pricesMinor = List.copyOf(pricesMinor);
         if (weightBracketsG.isEmpty()) {
-            throw new IllegalArgumentException("rate_table requires at least one weight bracket");
+            throw new ObjectRefusal("invalid_value", "rate_table requires at least one weight bracket");
         }
         if (weightBracketsG.size() != pricesMinor.size()) {
-            throw new IllegalArgumentException(
+            throw new ObjectRefusal("invalid_value",
                     "rate_table weight_brackets_g and prices_minor must be the same length");
         }
         requireAscending(weightBracketsG);
         for (long price : pricesMinor) {
             if (price < 0) {
-                throw new IllegalArgumentException("rate_table prices cannot be negative");
+                throw new ObjectRefusal("below_minimum", "rate_table prices cannot be negative");
             }
         }
         if (minimumChargeMinor < 0) {
-            throw new IllegalArgumentException("rate_table minimum_charge_minor cannot be negative");
+            throw new ObjectRefusal("below_minimum", "rate_table minimum_charge_minor cannot be negative");
         }
         if (fuelSurchargePermille < 0) {
-            throw new IllegalArgumentException("rate_table fuel_surcharge_permille cannot be negative");
+            throw new ObjectRefusal("below_minimum", "rate_table fuel_surcharge_permille cannot be negative");
         }
     }
 
@@ -84,10 +85,10 @@ public record RateTable(
         long previous = 0;
         for (long bound : brackets) {
             if (bound <= 0) {
-                throw new IllegalArgumentException("rate_table weight brackets must be positive");
+                throw new ObjectRefusal("below_minimum", "rate_table weight brackets must be positive");
             }
             if (bound <= previous) {
-                throw new IllegalArgumentException("rate_table weight brackets must be strictly ascending");
+                throw new ObjectRefusal("invalid_value", "rate_table weight brackets must be strictly ascending");
             }
             previous = bound;
         }

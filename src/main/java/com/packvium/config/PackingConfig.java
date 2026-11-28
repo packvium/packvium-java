@@ -1,5 +1,8 @@
 package com.packvium.config;
 
+import com.packvium.support.ObjectRefusal;
+import com.packvium.support.PythonRepr;
+import com.packvium.support.RequestRules;
 import com.packvium.unit.Length;
 import java.util.List;
 import java.util.Optional;
@@ -31,19 +34,27 @@ public record PackingConfig(
         solvers = List.copyOf(solvers);
         if (timeLimitMs <= 0 || topK <= 0 || exactItemLimit <= 0 || multiStartOrders <= 0
                 || maxCandidatesPerItem <= 0 || containerPlanBeamWidth <= 0 || containerPlanNodeLimit <= 0) {
-            throw new IllegalArgumentException("positive configuration values required");
+            throw new ObjectRefusal("below_minimum", "positive configuration values required");
         }
         if (maxContainers.isPresent() && maxContainers.get() < 1) {
-            throw new IllegalArgumentException("max_containers must be at least 1");
+            throw new ObjectRefusal("below_minimum", "max_containers must be at least 1");
         }
         if (maxCandidatePoints < 16) {
-            throw new IllegalArgumentException("max_candidate_points must be at least 16");
+            throw new ObjectRefusal("below_minimum", "max_candidate_points must be at least 16");
         }
-        if (minimumSupportRatio < 0 || minimumSupportRatio > 1) {
-            throw new IllegalArgumentException("minimum_support_ratio must be between 0 and 1");
+        if (!ObjectRefusal.isRatio(minimumSupportRatio)) {
+            throw ObjectRefusal.ratio(minimumSupportRatio, "minimum_support_ratio must be between 0 and 1");
         }
         if (dimensionalWeightDivisor.isPresent() && dimensionalWeightDivisor.get() <= 0) {
-            throw new IllegalArgumentException("dimensional_weight_divisor must be positive");
+            throw new ObjectRefusal("below_minimum", "dimensional_weight_divisor must be positive");
+        }
+        requireUnitCode("dimensional_weight_length_unit", dimensionalWeightLengthUnit, RequestRules.LENGTH_UNITS);
+        requireUnitCode("dimensional_weight_weight_unit", dimensionalWeightWeightUnit, RequestRules.WEIGHT_UNITS);
+    }
+
+    private static void requireUnitCode(String name, String unit, List<String> allowed) {
+        if (!allowed.contains(unit)) {
+            throw new ObjectRefusal("not_allowed", name + " must be one of " + PythonRepr.strings(allowed));
         }
     }
 

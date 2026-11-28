@@ -37,7 +37,7 @@ public final class RationalParser {
         }
         Matcher decimal = DECIMAL.matcher(text);
         if (!decimal.matches()) {
-            throw new IllegalArgumentException("Invalid decimal or fraction: " + text);
+            throw new ObjectRefusal("wrong_type", "invalid decimal or fraction: " + text);
         }
         return decimal(negative, decimal.group(2), decimal.group(3));
     }
@@ -100,7 +100,7 @@ public final class RationalParser {
             return new Rational(negative ? -value : value, 1);
         }
         if (fraction.length() > MAX_FRACTIONAL_DIGITS) {
-            throw new IllegalArgumentException("decimal has more fractional digits than a tick can distinguish");
+            throw new ObjectRefusal("wrong_type", "decimal has more fractional digits than a tick can distinguish");
         }
         long denominator = pow10(fraction.length());
         long numerator = exact(() -> Math.addExact(Math.multiplyExact(digits(whole), denominator), digits(fraction)));

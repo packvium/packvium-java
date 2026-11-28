@@ -1,5 +1,6 @@
 package com.packvium.unit;
 
+import com.packvium.support.ObjectRefusal;
 import com.packvium.support.RationalParser;
 import com.packvium.support.Text;
 import java.util.LinkedHashMap;
@@ -59,7 +60,7 @@ public record Weight(long ticks) implements Comparable<Weight> {
             case "kg" -> TICKS_PER_KG;
             case "oz" -> TICKS_PER_OZ;
             case "lb", "lbs" -> TICKS_PER_LB;
-            default -> throw new IllegalArgumentException("unsupported weight unit: " + unit);
+            default -> throw new ObjectRefusal("invalid_unit", "unsupported weight unit: " + unit);
         };
     }
 

@@ -24,6 +24,7 @@ import com.packvium.policy.PolicyRuleSet;
 import com.packvium.support.CanonicalJsonException;
 import com.packvium.support.FixedPlacementShape;
 import com.packvium.support.JsonValue;
+import com.packvium.support.ObjectRefusal;
 import com.packvium.support.RequestRules;
 import com.packvium.unit.Length;
 import com.packvium.unit.Rounding;
@@ -104,7 +105,7 @@ public final class RequestDecoder {
             fixed.add(fixedPlacement(new Fields(entry, "fixed_placement"), unit));
         }
         Fields output = request.child("output");
-        return new DecodedRequest(config, items, containers, fixed, output.text("length_unit", unit),
+        return new DecodedRequest(config, items, containers, fixed, output.text("length_unit", outputLengthUnit(unit)),
                 output.text("weight_unit", WEIGHT_UNIT), references, policy);
     }
 
@@ -114,11 +115,28 @@ public final class RequestDecoder {
      * a canonical-form one -- passes through unchanged.
      */
     private static RuntimeException asRequestError(RuntimeException error) {
+        if (error instanceof ObjectRefusal refusal) {
+            // A model's own refusal names a reason for the object API; the rules did not name this
+            // value, and every engine reports that as invalid_value with no field.
+            return new InvalidRequestException("invalid_value", "", refusal.detail(), refusal);
+        }
         if (error instanceof InvalidRequestException || error instanceof UnsupportedFeatureException
                 || error instanceof CanonicalJsonException) {
             return error;
         }
         return new InvalidRequestException("invalid_value", "", String.valueOf(error.getMessage()), error);
+    }
+
+    /**
+     * The output unit a request without {@code output.length_unit} is written in: the request's
+     * own {@code units.length}, spelt as the schema's output code, so {@code " Inches "} is
+     * {@code in}. A unit no output code names -- the internal {@code tick} -- gives {@code mm}, the
+     * default of both blocks. O(1).
+     */
+    private static String outputLengthUnit(String requestUnit) {
+        long multiplier = Length.multiplier(requestUnit);
+        return RequestRules.LENGTH_UNITS.stream().filter(code -> Length.multiplier(code) == multiplier).findFirst()
+                .orElse("mm");
     }
 
     /**
@@ -218,7 +236,7 @@ public final class RequestDecoder {
                 .shapeType(ShapeType.fromWireName(item.text("shape_type", ShapeType.RIGID_CUBOID.wireName())))
                 .hullVertices(item.has("hull_vertices") ? hullVertices(item.list("hull_vertices"), unit) : null)
                 .compressionRatioPpm(item.has("compression_ratio")
-                        ? ratioToPpm(item.number("compression_ratio", 0)) : null)
+                        ? Compression.ratioToPpm(item.number("compression_ratio", 0)) : null)
                 .maxCompressionPressureKpa(item.optionalInteger("max_compression_pressure_kpa"))
                 .stackingGroup(item.optionalText("stacking_group").orElse(null))
                 .acceptsStackingGroups(item.tags("accepts_stacking_groups"));
@@ -256,14 +274,6 @@ public final class RequestDecoder {
                     Length.parse(vertex.raw("z"), unit).ticks()));
         }
         return vertices;
-    }
-
-    /** The published rule, floor(ratio * 1000000 + 0.5), applied once at the boundary. */
-    private static long ratioToPpm(double ratio) {
-        if (ratio < 0.0 || ratio > 1.0) {
-            throw new IllegalArgumentException("compression_ratio must be between zero and one");
-        }
-        return (long) (ratio * Compression.PPM + 0.5);
     }
 
     private static Container container(Fields container, String unit) {
@@ -341,7 +351,7 @@ public final class RequestDecoder {
         if (origin.members().containsKey(axis) && origin.raw(axis) == null) {
             // The reference reads a present null as the text `None`, which its decimal parser
             // refuses with this message.
-            throw new IllegalArgumentException("[<class 'decimal.ConversionSyntax'>]");
+            throw new ObjectRefusal("wrong_type", "invalid decimal or fraction: None");
         }
         return Length.parse(origin.has(axis) ? origin.raw(axis) : 0L, unit).ticks();
     }

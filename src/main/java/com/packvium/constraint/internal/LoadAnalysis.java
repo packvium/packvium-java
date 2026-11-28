@@ -120,33 +120,51 @@ public final class LoadAnalysis {
 
     /**
      * Everything resting anywhere above each unit, following the support graph upward, each
-     * set in first-reached order (children first, then their ancestors depth-first).
+     * set in first-reached order (children first, then what rests on each of them).
+     *
+     * <p>Walked iteratively in the load order the loads use: a child's top is above its
+     * supporter's, so every child's set is complete before its supporter reads it, and no stack
+     * depth -- a tall stack of sheets -- costs a call frame. O(sum of set sizes) after the load
+     * order, which the graph sorts once in O(n log n) and caches.
      */
     public List<Set<Integer>> restingAbove() {
         if (restingAbove == null) {
-            List<Set<Integer>> memo = new ArrayList<>(Collections.nCopies(units.size(), null));
-            List<Set<Integer>> sets = new ArrayList<>(units.size());
-            for (int index = 0; index < units.size(); index++) {
-                sets.add(aboveSet(index, memo));
+            List<Set<Integer>> sets = new ArrayList<>(Collections.nCopies(units.size(), Set.of()));
+            for (int index : graph.descending()) {
+                Set<Integer> result = new LinkedHashSet<>();
+                for (int child : graph.children(index)) {
+                    result.add(child);
+                    result.addAll(sets.get(child));
+                }
+                sets.set(index, Collections.unmodifiableSet(result));
             }
             restingAbove = List.copyOf(sets);
         }
         return restingAbove;
     }
 
-    private Set<Integer> aboveSet(int index, List<Set<Integer>> memo) {
-        Set<Integer> cached = memo.get(index);
-        if (cached != null) {
-            return cached;
+    /**
+     * First unit due at an earlier stop with a later-stop unit resting above it. {@code stops} is
+     * parallel to the units; {@link Double#POSITIVE_INFINITY} rides the whole route. The uppers are
+     * walked in ascending index order, not first-reached order: the detail names the first
+     * violator, and every engine must name the same one. O(sum of set sizes times their log).
+     */
+    public Optional<Violation> routeOrderViolated(List<Double> stops) {
+        List<Set<Integer>> above = restingAbove();
+        for (int index = 0; index < above.size(); index++) {
+            for (int upper : above.get(index).stream().sorted().toList()) {
+                if (stops.get(upper) > stops.get(index)) {
+                    return Optional.of(new Violation("unloading_order_violation",
+                            units.get(index).label() + " blocked by " + units.get(upper).label()));
+                }
+            }
         }
-        Set<Integer> result = new LinkedHashSet<>();
-        for (int child : graph.children(index)) {
-            result.add(child);
-            result.addAll(aboveSet(child, memo));
-        }
-        Set<Integer> frozen = Collections.unmodifiableSet(result);
-        memo.set(index, frozen);
-        return frozen;
+        return Optional.empty();
+    }
+
+    /** Whether any stop is a real one: a load that all rides the whole route has no order to violate. */
+    public static boolean routed(List<Double> stops) {
+        return stops.stream().anyMatch(stop -> stop != Double.POSITIVE_INFINITY);
     }
 
     public long[] stackedCounts() {

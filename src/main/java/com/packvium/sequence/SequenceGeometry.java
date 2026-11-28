@@ -3,7 +3,8 @@ package com.packvium.sequence;
 import com.packvium.domain.AxisAlignedBox;
 import com.packvium.domain.Dimensions;
 import com.packvium.domain.SweptRegion;
-import java.util.HashSet;
+import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -94,33 +95,37 @@ public final class SequenceGeometry {
         }
     }
 
-    /** Depth-first cycle check, O(V + E). */
+    /**
+     * Kahn's algorithm: acyclic exactly when every node can be released. O(V + E).
+     *
+     * <p>Iterative, not a depth-first walk: a stack of sheets is a dependency chain as long as the
+     * stack, and recursion would spend one call frame per level. A node named only as a
+     * dependency counts as a node too.
+     */
     public static boolean isAcyclic(Map<Integer, Set<Integer>> dependsOn) {
-        Set<Integer> visiting = new HashSet<>();
-        Set<Integer> visited = new HashSet<>();
-        for (int node : dependsOn.keySet()) {
-            if (!visit(node, dependsOn, visiting, visited)) {
-                return false;
+        Map<Integer, Integer> waiting = new HashMap<>();
+        for (Map.Entry<Integer, Set<Integer>> entry : dependsOn.entrySet()) {
+            waiting.putIfAbsent(entry.getKey(), 0);
+            for (int dependency : entry.getValue()) {
+                waiting.merge(dependency, 1, Integer::sum);
             }
         }
-        return true;
-    }
-
-    private static boolean visit(int node, Map<Integer, Set<Integer>> dependsOn, Set<Integer> visiting,
-            Set<Integer> visited) {
-        if (visited.contains(node)) {
-            return true;
-        }
-        if (!visiting.add(node)) {
-            return false;
-        }
-        for (int dependency : dependsOn.getOrDefault(node, Set.of())) {
-            if (!visit(dependency, dependsOn, visiting, visited)) {
-                return false;
+        ArrayDeque<Integer> ready = new ArrayDeque<>();
+        waiting.forEach((node, count) -> {
+            if (count == 0) {
+                ready.push(node);
+            }
+        });
+        int released = 0;
+        while (!ready.isEmpty()) {
+            int node = ready.pop();
+            released++;
+            for (int dependency : dependsOn.getOrDefault(node, Set.of())) {
+                if (waiting.merge(dependency, -1, Integer::sum) == 0) {
+                    ready.push(dependency);
+                }
             }
         }
-        visiting.remove(node);
-        visited.add(node);
-        return true;
+        return released == waiting.size();
     }
 }

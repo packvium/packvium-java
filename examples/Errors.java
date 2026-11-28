@@ -16,7 +16,7 @@ import java.util.function.Consumer;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Errors.java
+ *     java -cp target/packvium-1.7.0.jar examples/Errors.java
  * </pre>
  *
  * <p>A packing service takes JSON from a caller it does not control. Most failures are the

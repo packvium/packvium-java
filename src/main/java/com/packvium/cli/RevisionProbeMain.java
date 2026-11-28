@@ -6,6 +6,7 @@ import com.packvium.revisions.RevisionIssue;
 import com.packvium.serialization.InvalidRequestException;
 import com.packvium.serialization.JsonReader;
 import com.packvium.serialization.RequestPacker;
+import com.packvium.serialization.UnsupportedFeatureException;
 import com.packvium.support.CanonicalJson;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -22,7 +23,8 @@ import java.util.Map;
  * cases, stdout one JSON line per case, in order, {@code {"error": code-or-null, "message":
  * text-or-null, "json": text-or-null}}. {@code admit} packs a request through the engine's
  * ordinary JSON entry point and reports a request refusal, if any, with its {@code reason} and
- * {@code field} as well. A refusal is an outcome, not a failure, so the harness exits 0 unless it
+ * {@code field} as well. {@code validate} judges its {@code request} and {@code result} (JSON text or
+ * documents) with the result validator and prints {@link ValidateMain}'s outcome line instead. A refusal is an outcome, not a failure, so the harness exits 0 unless it
  * cannot run at all; any other failure of an op other than {@code admit} stops it.
  */
 public final class RevisionProbeMain {
@@ -33,7 +35,10 @@ public final class RevisionProbeMain {
         PrintStream out = new PrintStream(System.out, false, StandardCharsets.UTF_8);
         Object cases = JsonReader.parse(new String(System.in.readAllBytes(), StandardCharsets.UTF_8));
         for (Object entry : (List<?>) cases) {
-            out.print(CanonicalJson.encode(outcome((Map<?, ?>) entry)));
+            Map<?, ?> testCase = (Map<?, ?>) entry;
+            out.print(CanonicalJson.encode("validate".equals(testCase.get("op"))
+                    ? ValidateMain.outcome(testCase.get("request"), testCase.get("result"))
+                    : outcome(testCase)));
             out.print('\n');
         }
         out.flush();
@@ -60,6 +65,13 @@ public final class RevisionProbeMain {
             outcome.put("json", null);
             outcome.put("reason", refusal.reason());
             outcome.put("field", refusal.field());
+        } catch (UnsupportedFeatureException refusal) {
+            if (!admit) {
+                throw refusal;
+            }
+            outcome.put("error", "unsupported_feature");
+            outcome.put("message", refusal.getMessage());
+            outcome.put("json", null);
         } catch (RuntimeException failure) {
             if (!admit) {
                 throw failure;

@@ -18,8 +18,8 @@ import java.util.Set;
 /**
  * The request schema's rules, walked over the decoded JSON before any model is built.
  *
- * <p>The first violation wins, in the order every engine follows -- units, configuration, items,
- * containers -- and is refused with the same reason, JSON Pointer and message the Python engine
+ * <p>The first violation wins, in the order every engine follows -- units, output, configuration,
+ * items, item ids, containers, container ids -- and is refused with the same reason, JSON Pointer and message the Python engine
  * raises. O(size of the request), plus
  * O(t log t) to walk an object of t tag limits in code-point order.
  */
@@ -28,14 +28,24 @@ public final class RequestRules {
     public static final List<String> OBJECTIVES = List.of("default", "lowest_cost", "shipping_cost",
             "lowest_landed_cost", "open_dimension_height", "maximum_value", "maximum_volume");
     public static final List<String> ACCESS_DIRECTIONS = List.of("+x", "-x", "+y", "-y", "+z", "-z");
+    /** The schema's closed vocabularies, each refused as {@code not_allowed} like the two above. */
+    public static final List<String> SOLVERS = List.of("grid", "extreme_points", "homogeneous_blocks", "layer",
+            "maximal_spaces", "exact_small");
+    public static final List<String> ROTATIONS = List.of("LWH", "LHW", "WLH", "WHL", "HLW", "HWL");
+    /** The unit codes the schema names wherever it asks for a unit by itself: an output or a dimensional-weight unit. */
+    public static final List<String> LENGTH_UNITS = List.of("mm", "cm", "m", "in", "ft");
+    public static final List<String> WEIGHT_UNITS = List.of("mg", "g", "kg", "oz", "lb");
+    public static final List<String> GROUND_CONTACT_RULES = List.of("free", "covered", "single", "multiple");
+    public static final List<String> SHAPE_TYPES = List.of("rigid_cuboid", "convex_hull", "compressible");
 
-    private static final List<Map.Entry<String, Long>> CONFIGURATION_INTEGERS = List.of(
+    /** Shared with {@link RequestObjects}, which walks the same fields over a request of objects. */
+    static final List<Map.Entry<String, Long>> CONFIGURATION_INTEGERS = List.of(
             Map.entry("time_limit_ms", 1L), Map.entry("alternatives", 1L), Map.entry("max_containers", 1L),
             Map.entry("exact_item_limit", 1L), Map.entry("multi_start_orders", 1L),
             Map.entry("max_candidates_per_item", 1L), Map.entry("max_candidate_points", 16L),
             Map.entry("container_plan_beam_width", 1L), Map.entry("container_plan_node_limit", 1L),
             Map.entry("dimensional_weight_divisor", 1L));
-    private static final List<String> EFFORT_LIMITS = List.of("max_candidates_evaluated", "max_placement_attempts",
+    static final List<String> EFFORT_LIMITS = List.of("max_candidates_evaluated", "max_placement_attempts",
             "max_search_nodes", "max_restarts");
     /** Every key the request schema's {@code configuration} declares; it sets {@code additionalProperties: false}. */
     private static final Set<String> CONFIGURATION_FIELDS = Set.of(
@@ -48,7 +58,7 @@ public final class RequestRules {
     private static final List<String> AXES = List.of("x", "y", "z");
     private static final String WEIGHT_UNIT = "g";
     /** Container fields a flat bag refuses, in reporting order. */
-    private static final List<String> BAG_EXCLUSIONS = List.of("obstacles", "axles", "access_directions",
+    static final List<String> BAG_EXCLUSIONS = List.of("obstacles", "axles", "access_directions",
             "max_stack_density", "outer_dimensions", "void_fill_reserve_ratio", "made_to_measure");
     /** Every key the request schema's {@code made_to_measure} declares; it sets {@code additionalProperties: false}. */
     private static final Set<String> MADE_TO_MEASURE_FIELDS = Set.of("cost_per_square_metre_minor", "increment",
@@ -61,17 +71,18 @@ public final class RequestRules {
     public static void check(Object data) {
         Map<?, ?> request = objectAt(data, "");
         String unit = units(request.get("units"));
+        output(request.get("output"));
         configuration(request.get("configuration"), unit);
         List<?> items = requiredList(request, "items", "");
         for (int index = 0; index < items.size(); index++) {
             item(items.get(index), "/items/" + index, unit);
         }
-        requireUniqueIds(items, "items");
+        requireUniqueIds(identifiers(items), "items");
         List<?> containers = requiredList(request, "containers", "");
         for (int index = 0; index < containers.size(); index++) {
             container(containers.get(index), "/containers/" + index, unit);
         }
-        requireUniqueIds(containers, "containers");
+        requireUniqueIds(identifiers(containers), "containers");
     }
 
     /** The RFC 6901 pointer to one member, escaping {@code ~} and {@code /} in its name. */
@@ -95,6 +106,15 @@ public final class RequestRules {
         return stated;
     }
 
+    private static void output(Object raw) {
+        if (raw == null) {
+            return;
+        }
+        Map<?, ?> output = objectAt(raw, "/output");
+        optionalOneOf(output, "length_unit", "/output", LENGTH_UNITS);
+        optionalOneOf(output, "weight_unit", "/output", WEIGHT_UNITS);
+    }
+
     private static void configuration(Object raw, String unit) {
         if (raw == null) {
             return;
@@ -104,6 +124,9 @@ public final class RequestRules {
         knownFields(configuration, where, CONFIGURATION_FIELDS);
         optionalOneOf(configuration, "solver_profile", where, SOLVER_PROFILES);
         optionalOneOf(configuration, "objective", where, OBJECTIVES);
+        optionalEachOneOf(configuration, "solvers", where, SOLVERS);
+        optionalOneOf(configuration, "dimensional_weight_length_unit", where, LENGTH_UNITS);
+        optionalOneOf(configuration, "dimensional_weight_weight_unit", where, WEIGHT_UNITS);
         for (Map.Entry<String, Long> rule : CONFIGURATION_INTEGERS) {
             optionalInteger(configuration, rule.getKey(), where, rule.getValue());
         }
@@ -127,6 +150,7 @@ public final class RequestRules {
         optionalMeasure(item, "weight", where, Kind.WEIGHT, WEIGHT_UNIT);
         optionalMeasure(item, "max_top_load", where, Kind.WEIGHT, WEIGHT_UNIT);
         optionalMeasure(item, "nesting_height", where, Kind.LENGTH, unit);
+        nestingBelowHeight(item, where, unit);
         optionalInteger(item, "max_stacked_items", where, 1);
         optionalInteger(item, "stop_index", where, 0);
         optionalInteger(item, "value", where, 0);
@@ -144,9 +168,27 @@ public final class RequestRules {
                 stackingGroupName(names.get(index), where + "/accepts_stacking_groups/" + index);
             }
         }
+        optionalEachOneOf(item, "allowed_rotations", where, ROTATIONS);
+        optionalOneOf(item, "ground_contact_rule", where, GROUND_CONTACT_RULES);
+        optionalOneOf(item, "shape_type", where, SHAPE_TYPES);
     }
 
-    private static void stackingGroupName(Object value, String field) {
+    /**
+     * A nested copy sinks by less than its own height, or it would vanish into the one below. Both
+     * measures have passed their own rules already, and are compared in ticks. O(1).
+     */
+    private static void nestingBelowHeight(Map<?, ?> item, String where, String unit) {
+        Object nesting = item.get("nesting_height");
+        if (nesting == null) {
+            return;
+        }
+        Object height = ((Map<?, ?>) item.get("dimensions")).get("height");
+        if (MeasureReading.ticks(nesting, Kind.LENGTH, unit) >= MeasureReading.ticks(height, Kind.LENGTH, unit)) {
+            throw refuse("invalid_value", where + "/nesting_height", "must be less than the item's height");
+        }
+    }
+
+    static void stackingGroupName(Object value, String field) {
         if (!(value instanceof String name)) {
             throw refuse("wrong_type", field, "must be a string");
         }
@@ -210,7 +252,7 @@ public final class RequestRules {
     }
 
     /** An empty obstacle list and a zero reserve change nothing, so only they are let through. */
-    private static boolean setBesideABag(String name, Object value) {
+    static boolean setBesideABag(String name, Object value) {
         if (name.equals("obstacles")) {
             // Already a list here: the obstacle rules ran first.
             return value instanceof List<?> list && !list.isEmpty();
@@ -287,9 +329,13 @@ public final class RequestRules {
     }
 
     private static void accessDirections(Object raw, String where) {
-        List<?> directions = listAt(raw, where);
-        for (int index = 0; index < directions.size(); index++) {
-            oneOf(directions.get(index), where + "/" + index, ACCESS_DIRECTIONS);
+        eachOneOf(raw, where, ACCESS_DIRECTIONS);
+    }
+
+    private static void eachOneOf(Object raw, String where, List<String> allowed) {
+        List<?> values = listAt(raw, where);
+        for (int index = 0; index < values.size(); index++) {
+            oneOf(values.get(index), where + "/" + index, allowed);
         }
     }
 
@@ -348,7 +394,7 @@ public final class RequestRules {
 
     // --------------------------------------------------------------------------- primitives
 
-    private static void integer(Object value, String field, long minimum) {
+    static void integer(Object value, String field, long minimum) {
         if (JsonValue.integer(value).isEmpty()) {
             refuseNonInteger(value, field, minimum);
         }
@@ -369,7 +415,7 @@ public final class RequestRules {
         throw refuse("wrong_type", field, "must be an integer");
     }
 
-    private static void ratio(Object value, String field, Long maximum) {
+    static void ratio(Object value, String field, Long maximum) {
         if (!JsonValue.isNumber(value)) {
             throw refuse("wrong_type", field, "must be a number");
         }
@@ -416,7 +462,7 @@ public final class RequestRules {
         }
     }
 
-    private static void oneOf(Object value, String field, List<String> allowed) {
+    static void oneOf(Object value, String field, List<String> allowed) {
         // List.of refuses to look a null up, and null is never an allowed value.
         if (value == null || !allowed.contains(value)) {
             throw refuse("not_allowed", field, "must be one of " + CanonicalJson.spelling(allowed));
@@ -465,6 +511,13 @@ public final class RequestRules {
         }
     }
 
+    private static void optionalEachOneOf(Map<?, ?> object, String name, String where, List<String> allowed) {
+        Object value = object.get(name);
+        if (value != null) {
+            eachOneOf(value, where + "/" + name, allowed);
+        }
+    }
+
     private static void optionalRatio(Map<?, ?> object, String name, String where, Long maximum) {
         Object value = object.get(name);
         if (value != null) {
@@ -498,15 +551,23 @@ public final class RequestRules {
     }
 
     /** Checked once every entry is well formed, so the later of two equal ids is named. */
-    private static void requireUniqueIds(List<?> entries, String key) {
+    static void requireUniqueIds(List<?> identifiers, String key) {
         Set<Object> seen = new HashSet<>();
-        for (int index = 0; index < entries.size(); index++) {
-            Object identifier = ((Map<?, ?>) entries.get(index)).get("id");
+        for (int index = 0; index < identifiers.size(); index++) {
+            Object identifier = identifiers.get(index);
             if (!seen.add(identifier)) {
                 throw refuse("duplicate_id", "/" + key + "/" + index + "/id",
                         "repeats the id " + CanonicalJson.spelling(identifier));
             }
         }
+    }
+
+    private static List<Object> identifiers(List<?> entries) {
+        List<Object> identifiers = new ArrayList<>(entries.size());
+        for (Object entry : entries) {
+            identifiers.add(((Map<?, ?>) entry).get("id"));
+        }
+        return identifiers;
     }
 
     private static InvalidRequestException refuse(String reason, String field, String detail) {

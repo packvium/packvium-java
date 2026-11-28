@@ -222,7 +222,7 @@ public final class LoadingDependencyGraph {
                 candidate.instance(), candidateBox);
         int count = support.supporterBoxes().size();
         boolean violated = (rule.get().equals("covered")
-                        && !SupportConstraint.touchesCorners(candidateBox, support.surfaces()))
+                        && !SupportConstraint.touchesCorners(candidateBox, support.supporterBoxes()))
                 || (rule.get().equals("single") && count != 1)
                 || (rule.get().equals("multiple") && count < 2);
         return violated

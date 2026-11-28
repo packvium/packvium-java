@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Reproducibility.java
+ *     java -cp target/packvium-1.7.0.jar examples/Reproducibility.java
  * </pre>
  *
  * <p>The search tries several starts and keeps the best. Something has to decide when it stops,

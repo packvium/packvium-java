@@ -177,7 +177,7 @@ class OperationalArtifactTest {
     void thePlanInsideIsExactlyThePlanBuilderOutput() {
         Map<String, Object> artifact = artifact();
         assertEquals(OperationalArtifact.FORMAT, artifact.get("format"));
-        assertEquals("1.6.0", artifact.get("suite_version"));
+        assertEquals("1.7.0", artifact.get("suite_version"));
         assertEquals(Plan.canonicalJson(Plan.build(request(), result(), REVERSED)),
                 Plan.canonicalJson(asMap(artifact.get("plan"))));
     }

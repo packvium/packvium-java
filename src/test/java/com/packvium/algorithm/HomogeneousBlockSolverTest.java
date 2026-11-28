@@ -62,14 +62,30 @@ class HomogeneousBlockSolverTest {
                 Deadline.ofMilliseconds(60_000));
     }
 
+    /** The block solver without {@code quality}'s lookahead: one greedy pass per mode. */
+    private static PackingConfig greedy() {
+        return PackingConfig.builder(SolverProfile.BALANCED).containerPlanNodeLimit(100_000).build();
+    }
+
     @Test
     void aBlockSetOnASmallerOneReportsTheSupportItReallyHas() {
-        List<Placement> placements = solve(aBaseAndThreeTops(), PackingConfig.quality()).state().placements;
+        // The greedy pass sets the base on two tops; the lookahead finds a layout with no overhang
+        // at all, so the greedy pass is the one that exercises the report.
+        List<Placement> placements = solve(aBaseAndThreeTops(), greedy()).state().placements;
         Placement base = placements.stream().filter(p -> p.instance().item().id().equals("base")).findFirst()
                 .orElseThrow();
         assertTrue(base.envelopeOrigin().z() > 0);
         assertTrue(Math.abs(base.supportRatio() - 5.0 / 6.0) < 1e-9, "support " + base.supportRatio());
         assertEquals(restingShare(placements, base), base.supportRatio());
+    }
+
+    @Test
+    void theQualityLookaheadFindsALayoutWithNothingOverhanging() {
+        SingleContainerSolution greedy = solve(aBaseAndThreeTops(), greedy());
+        SingleContainerSolution looked = solve(aBaseAndThreeTops(), PackingConfig.quality());
+        assertTrue(looked.unpacked().isEmpty() && !looked.timeLimitReached());
+        assertTrue(looked.state().placements.stream().allMatch(placement -> placement.supportRatio() == 1.0));
+        assertTrue(looked.state().maxZ < greedy.state().maxZ);
     }
 
     @Test

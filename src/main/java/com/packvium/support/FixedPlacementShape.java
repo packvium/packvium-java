@@ -16,6 +16,11 @@ import java.util.function.BiFunction;
  */
 public final class FixedPlacementShape {
     public static final List<String> ORIENTATIONS = List.of("LWH", "LHW", "WLH", "WHL", "HLW", "HWL");
+
+    /** The orientation rule as the request-error tables word a closed vocabulary. */
+    public static String orientationRule() {
+        return "must be one of " + CanonicalJson.spelling(ORIENTATIONS);
+    }
     private static final List<String> REQUIRED = List.of("item_type", "container_type", "orientation");
     private static final List<String> FIELDS = List.of("item_type", "container_type", "orientation",
             "container_instance", "position");
@@ -82,7 +87,7 @@ public final class FixedPlacementShape {
             }
         }
         if (!(entry.get("orientation") instanceof String orientation) || !ORIENTATIONS.contains(orientation)) {
-            throw malformed(where + ".orientation is one of the six codes", field + "/orientation");
+            throw malformed(where + ".orientation " + orientationRule(), field + "/orientation");
         }
         long instance = entry.containsKey("container_instance")
                 ? JsonValue.integer(entry.get("container_instance")).orElse(0L)

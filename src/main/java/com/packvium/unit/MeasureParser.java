@@ -1,5 +1,6 @@
 package com.packvium.unit;
 
+import com.packvium.support.ObjectRefusal;
 import com.packvium.support.JsonValue;
 import com.packvium.support.Rational;
 import com.packvium.support.RationalParser;
@@ -28,6 +29,10 @@ final class MeasureParser {
             Object unit = object.get("unit");
             String stated = unit == null ? defaultUnit : text(unit);
             Object amount = object.get("value");
+            if (amount instanceof Boolean) {
+                multiplier.applyAsLong(stated);
+                throw notAMeasure();
+            }
             if (isFloat(amount)) {
                 // The reference reads an object's value through the same rule as a bare number,
                 // with the generic word: a fraction in binary floating point is refused.
@@ -44,7 +49,15 @@ final class MeasureParser {
             return scaled(written, defaultUnit, rounding);
         }
         long unitMultiplier = multiplier.applyAsLong(defaultUnit);
+        if (value instanceof Boolean) {
+            throw notAMeasure();
+        }
         return signed(RationalParser.parse(integer(value, quantity)), unitMultiplier, rounding);
+    }
+
+    /** A boolean is a number to some JSON readers, but never a measure anyone wrote. */
+    private static ObjectRefusal notAMeasure() {
+        return new ObjectRefusal("wrong_type", "a boolean is not a measure");
     }
 
     long scaled(String value, String unit, Rounding rounding) {
@@ -58,7 +71,7 @@ final class MeasureParser {
      */
     private long signed(Rational amount, long unitMultiplier, Rounding rounding) {
         if (amount.numerator() < 0) {
-            throw new IllegalArgumentException(quantity + " cannot be negative");
+            throw new ObjectRefusal("negative_measure", quantity + " cannot be negative");
         }
         return RationalParser.scaled(amount, unitMultiplier, rounding);
     }
@@ -79,7 +92,7 @@ final class MeasureParser {
                 return big.longValue();
             }
             if (big.signum() < 0) {
-                throw new IllegalArgumentException(quantity + " cannot be negative");
+                throw new ObjectRefusal("negative_measure", quantity + " cannot be negative");
             }
             throw new IllegalArgumentException("Scaled unit value exceeds integer range");
         }
@@ -88,7 +101,7 @@ final class MeasureParser {
             // float is exact, and JavaScript cannot send anything else for `100`.
             BigInteger whole = JsonValue.wholeNumber(value instanceof Float single ? single.doubleValue() : value);
             if (whole == null) {
-                throw new IllegalArgumentException(
+                throw new ObjectRefusal("wrong_type",
                         "float " + word + " input is intentionally rejected; use a decimal string");
             }
             return integer(whole, word);
@@ -99,10 +112,6 @@ final class MeasureParser {
     private static String text(Object value) {
         if (value == null) {
             return "";
-        }
-        if (value instanceof Boolean flag) {
-            // The reference reads a measure object's value as a number, where a boolean is 1 or 0.
-            return flag ? "1" : "0";
         }
         return value.toString();
     }

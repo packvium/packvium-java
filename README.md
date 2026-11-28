@@ -18,7 +18,7 @@ JavaScript return a valid answer at or above the objective floor. The reference 
 Python package `packvium`; "the Python engine" in this README and in the API documentation means
 that package.
 
-> **Version 1.6.0.** This release corresponds to Packvium 1.6.0 in the other languages.
+> **Version 1.7.0.** This release corresponds to Packvium 1.7.0 in the other languages.
 > Field names, status codes and the objective vector stay the same for all of 1.x, so a
 > later 1.x release can replace any earlier one without code changes.
 
@@ -28,6 +28,7 @@ that package.
 - [Quick start](#quick-start)
 - [Packing with domain objects](#packing-with-domain-objects)
 - [The JSON request API](#the-json-request-api)
+- [Validating a result](#validating-a-result)
 - [Constraints and objectives](#constraints-and-objectives)
 - [Boxes cut to measure, flat bags and stacking groups](#boxes-cut-to-measure-flat-bags-and-stacking-groups)
 - [Nested packing](#nested-packing)
@@ -54,20 +55,20 @@ Maven:
 <dependency>
     <groupId>com.packvium</groupId>
     <artifactId>packvium</artifactId>
-    <version>1.6.0</version>
+    <version>1.7.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.packvium:packvium:1.6.0")
+implementation("com.packvium:packvium:1.7.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.packvium:packvium:1.6.0'
+implementation 'com.packvium:packvium:1.7.0'
 ```
 
 The jar has no dependencies of its own.
@@ -137,6 +138,12 @@ for (UnpackedItem unpacked : result.unpacked()) {
 }
 ```
 
+A value the request format refuses is refused here as it is in a JSON request: `pack` throws
+`InvalidRequestException` with the same reason and the same JSON Pointer, so a quantity past
+2^53 - 1 is `above_maximum` at `/items/0/quantity`. A builder that refuses a value on its own,
+before the object is part of a request, throws `ObjectRefusal`, an `InvalidRequestException`
+with the reason and an empty field: `Item.builder(...).quantity(0).build()` is `below_minimum`.
+
 Every result has passed an independent validator that rechecks the placements against
 every rule. `result.score()` is a vector of exact integers compared lexicographically,
 lower is better; its first entry is always the number of items left unplaced.
@@ -195,8 +202,13 @@ Every schema minimum is enforced, and so is the physics: no length or weight is 
 misspelt key such as `profile` for `solver_profile` or `top_k` for `alternatives` is refused
 with reason `not_allowed` and the key's own pointer, rather than leaving the request to run on
 defaults, and so is `parallel`, which no request may set. An unknown `objective` or access
-direction is `not_allowed` at its pointer too, and a fractional float is never a measure, bare
-or as an object's `value`: send `"160.5"` as a string.
+direction is `not_allowed` at its pointer too, as is any other value outside a closed list: a
+rotation code, a `shape_type`, a `ground_contact_rule`, a `solvers` entry, and an output or
+dimensional-weight unit (the output units are `mm`, `cm`, `m`, `in`, `ft` and `mg`, `g`, `kg`,
+`oz`, `lb`). A `nesting_height` not below the item's own height is `invalid_value` at its
+pointer. A fractional float or a boolean is never a measure, bare or as an object's `value`:
+send `"160.5"` as a string. Without an `output` block the result is written in the request's
+own `units.length`, spelt as its output code, so `"Inches"` writes `in`.
 
 ```java
 import com.packvium.serialization.InvalidRequestException;
@@ -227,6 +239,33 @@ and `PolicyException` (a policy the engine cannot honour exactly as written).
 [`examples/Errors.java`](examples/Errors.java) turns a refused request into an HTTP answer. To
 get the JSON form of a result you built with domain objects, use
 `new ResultEncoder("mm", "g").encode(result)`.
+
+## Validating a result
+
+`ResultValidator.validate` judges any Packvium result against its request from the two JSON
+documents alone, sharing no code with the engine that produced it. It returns every issue it
+finds -- the same codes and details, in the same order, that every Packvium package returns for
+the same documents -- and an empty list for a sound result:
+
+```java
+import com.packvium.serialization.RequestPacker;
+import com.packvium.validation.MalformedResult;
+import com.packvium.validation.ResultIssue;
+import com.packvium.validation.ResultValidator;
+import java.util.List;
+
+try {
+    List<ResultIssue> issues = ResultValidator.validate(request, RequestPacker.pack(request));
+    System.out.println(issues);                           // [] -- the engine's own answer is sound
+    // a broken one reads like [collision: box#1 with box#2 in carton#1]
+} catch (MalformedResult refused) {
+    System.out.println(refused.kind() + ": " + refused.getMessage());
+}
+```
+
+It also takes the two documents as JSON text. A result that breaks the contract's shape is
+refused with `MalformedResult`: kind `CONTRACT` when the contract names the refusal (`result is
+missing 'score'`), `SHAPE` when the documents cannot be read the way the contract reads them.
 
 ## Constraints and objectives
 
@@ -717,7 +756,7 @@ Build the jar once, then run any example against it:
 
 ```bash
 mvn -q package -DskipTests
-java -cp target/packvium-1.6.0.jar examples/Objectives.java
+java -cp target/packvium-1.7.0.jar examples/Objectives.java
 ```
 
 ## Command line
@@ -728,7 +767,7 @@ and writes the result JSON to standard output:
 ```bash
 echo '{"items":[{"id":"box","quantity":8,"dimensions":{"length":"50","width":"50","height":"50"}}],
        "containers":[{"id":"carton","inner_dimensions":{"length":"100","width":"100","height":"100"}}]}' \
-  | java -jar target/packvium-1.6.0.jar
+  | java -jar target/packvium-1.7.0.jar
 ```
 
 When a request is refused, the program exits with status 1 and prints the reason on
@@ -777,8 +816,8 @@ any engine yet. A request that sets it is refused with `unsupported_feature`.
 
 ## Versioning
 
-The Java port follows the Packvium release history one version at a time, and Java 1.6.0
-corresponds to Packvium 1.6.0.
+The Java port follows the Packvium release history one version at a time, and Java 1.7.0
+corresponds to Packvium 1.7.0.
 Python, PHP, Java, .NET and Go return identical results at the same version; Rust and
 JavaScript return a valid answer at or above the objective floor.
 A version is released only once the port passes that version's shared conformance tests.

@@ -33,4 +33,4 @@ unknown objective: invalid_request: /configuration/objective: must be one of ["d
 fields this engine refuses by name: {"container":["pallet_overhang_limit"]}
   sending one anyway: unsupported_feature: the Java engine does not yet implement container.pallet_overhang_limit; the req
 
-the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.6.0.jar
+the CLI takes exactly the document above:  echo '...' | java -jar target/packvium-1.7.0.jar

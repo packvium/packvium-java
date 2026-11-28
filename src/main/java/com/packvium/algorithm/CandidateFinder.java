@@ -25,10 +25,13 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.PriorityQueue;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Feasible placements of one item in one container state, best first.
@@ -128,9 +131,26 @@ public final class CandidateFinder {
             scan = new ArrayList<>(scan.subList(0, Math.min(cap, scan.size())));
         }
         if (state.container.axles().isPresent()) {
-            scan.addAll(axleBalancedPoints(state, item, forms));
+            scan = appendUnseen(scan, axleBalancedPoints(state, item, forms));
         }
         return scan;
+    }
+
+    /**
+     * {@code points} then the {@code extra} points not already offered, keeping their order. A
+     * repeated point is the same candidate scanned twice: it can change nothing but the counted
+     * effort. O(k + a) for k offered and a extra points.
+     */
+    private static List<Point> appendUnseen(List<Point> points, List<Point> extra) {
+        Set<Point> fresh = new HashSet<>(extra);
+        points.forEach(fresh::remove);
+        List<Point> appended = new ArrayList<>(points);
+        for (Point point : extra) {
+            if (fresh.remove(point)) {
+                appended.add(point);
+            }
+        }
+        return appended;
     }
 
     private static List<Point> nestingPoints(ContainerState state, ItemInstance item) {
@@ -161,7 +181,9 @@ public final class CandidateFinder {
         long tareTicks = container.tareWeight().ticks();
         long tareDoubledX = container.innerDimensions().length().ticks();
         long limitX = container.innerDimensions().length().ticks();
-        LinkedHashSet<Long> floorYs = new LinkedHashSet<>();
+        // Ascending, as the reference scans them: insertion order would move which point a counted
+        // stop lands on.
+        TreeSet<Long> floorYs = new TreeSet<>();
         for (Point point : state.points) {
             if (point.z() == 0) {
                 floorYs.add(point.y());

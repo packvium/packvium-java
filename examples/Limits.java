@@ -13,7 +13,7 @@ import java.util.function.Consumer;
  * <p>Run it:
  *
  * <pre>
- *     java -cp target/packvium-1.6.0.jar examples/Limits.java
+ *     java -cp target/packvium-1.7.0.jar examples/Limits.java
  * </pre>
  *
  * <p>A same-day courier has one refrigerated van and a few cargo bikes. Every rule below is a

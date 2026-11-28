@@ -295,7 +295,8 @@ public final class PlanRevision {
         requireName(placement.get("container_type"), "placement.container_type");
         if (!(placement.get("orientation") instanceof String orientation)
                 || !FixedPlacementShape.ORIENTATIONS.contains(orientation)) {
-            throw new PlanRevisionException("invalid_event", "placement.orientation is one of the six codes");
+            throw new PlanRevisionException("invalid_event",
+                    "placement.orientation " + FixedPlacementShape.orientationRule());
         }
         Optional<Long> instance = placement.containsKey("container_instance")
                 ? JsonValue.integer(placement.get("container_instance"))
